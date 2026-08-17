@@ -1,3 +1,4 @@
 build/
 *.vtk
 *.o
+.claude/

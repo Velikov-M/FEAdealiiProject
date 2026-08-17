@@ -743,7 +743,7 @@ namespace StepCooling
     double derivativeKineticResidual(SymmetricTensor<2,dim> localStress, double curOmega, double tempInc);
 
     double mmsKineticResidual(const Point<dim> &p, const SymmetricTensor<2,dim> &localStress, double curOmega, double oldOmega, double curT, double tempInc);
-    //double mmsDerivativeKineticResidual(SymmetricTensor<2,dim> localStress, double curOmega, double tempInc);
+    double mmsDerivativeKineticResidual(const SymmetricTensor<2,dim> &localStress, double curOmega, double tempInc);
 
     ElasticityTensor<dim> elasticityTensor;
     CteTensor<dim> cteTensor;
@@ -934,6 +934,25 @@ namespace StepCooling
 
     double mmsResidualPart = kineticAddTerm(p, t) * tempInc; //toDO
     return mmsResidualPart + defaultPart; //mmsResidualPart should be defined in a way, that the exact solution will satisfy the kinetic equation with this additional part, so it can be used for testing the kinetic equation solver
+  }
+
+  // Derivative of mmsKineticResidual w.r.t. curOmega, derived directly from that function's
+  // current body (not from the older, unused derivativeKineticResidual -- that one predates
+  // this MMS residual and its formula does not match kineticResidual's own convention, so it
+  // is not a safe template to copy from).
+  //
+  // kineticAddTerm(p, t) depends only on (p, t), not on curOmega, so it contributes 0.
+  // defaultPart = curOmega - oldOmega - A * (actingStress/(1-curOmega))^m * tempInc, so
+  // d(defaultPart)/d(curOmega) = 1 - A * m * tempInc * actingStress^m / (1-curOmega)^(m+1).
+  template <int dim>
+  double ElasticProblem<dim>::mmsDerivativeKineticResidual(const SymmetricTensor<2,dim> &localStress, double curOmega, double tempInc)
+  {
+    double stressThreshold = prm.get_double({"MaterialParameters", "DamageParameters"}, "StressThreshold");
+    double A = prm.get_double({"MaterialParameters", "DamageParameters"}, "a_kineticParam");
+    double m = prm.get_double({"MaterialParameters", "DamageParameters"}, "m_kineticParam");
+    double actingStress = localStress[dim-1][dim-1] - stressThreshold;
+    Assert(actingStress > 0, ExcMessage("acting stress is negative, this function should've not be called"));
+    return 1 - A * m * tempInc * std::pow(actingStress, m) / std::pow(1 - curOmega, m + 1);
   }
 
   template <int dim>
@@ -1162,9 +1181,8 @@ namespace StepCooling
 
   template <int dim>
   void ElasticProblem<dim>::predict_damage_tempInc_external_solver(double curTemperature, double tempInc)
-  { 
+  {
     TimerOutput::Scope timer_section(timer, "Predict damage increment");
-    boost::math::tools::eps_tolerance<double> kineticAlgebraicSolverEps(prm.get_double({"SolverParameters"}, "KineticAlgebraicSolverTolerance"));
 
     SymmetricTensor<2, dim> globalStrain;
     SymmetricTensor<2, dim> localStrain;
@@ -1178,11 +1196,6 @@ namespace StepCooling
     std::vector<Tensor<2, dim>> global_displacement_gradients(quadrature_formula.size());
     global_displacement_gradients.resize(quadrature_formula.size());
 
-    // very specific for rabotnov function, should not be considered as general approach
-    double A = prm.get_double({"MaterialParameters", "DamageParameters"}, "a_kineticParam");
-    double m = prm.get_double({"MaterialParameters", "DamageParameters"}, "m_kineticParam");
-    double omegaMax = 1 - pow(A * m *tempInc, 1 / ( m + 1) );
-
     for (auto &cell : dof_handler.active_cell_iterators())
     {
       auto cell_damage = damageInQuadraturePoints.get_data(cell);
@@ -1190,7 +1203,7 @@ namespace StepCooling
       fe_values.reinit(cell);
       auto qPoints = fe_values.get_quadrature_points();
       for (unsigned int q = 0; q < n_q_points; q++)
-      { 
+      {
         Point<dim> curQpoint = qPoints[q];
         double old_damage = cell_damage[q]->old_damage;
         double cur_damage = cell_damage[q]->damage;
@@ -1199,16 +1212,35 @@ namespace StepCooling
         localStrain = Physics::Transformations::basis_transformation(globalStrain, rotTensorGlobalToLocal);
         localStress = getLocalStressTensor(localStrain, cur_damage, curTemperature);
         if (!checkActivationCriteria(localStress)) continue;
-        auto f = [&](double omega)-> double 
+
+        // Newton-Raphson (via boost, which falls back to bisection internally whenever a
+        // step would leave [min,max] or fails to make progress) starting from the current
+        // damage iterate. Replaces a fixed bracketing search: the Rabotnov-type kinetic
+        // equation's backward-Euler discretization can have two algebraic roots, and a
+        // bracket sized for the non-MMS equation's singularity-avoidance range ([omegaMax,
+        // 0.99], omegaMax close to 1) has no reason to contain the MMS-manufactured target
+        // root, which can sit anywhere in [old_damage, 1). Starting Newton from a nearby
+        // warm-started guess targets the physically-relevant root instead of whatever a
+        // fixed bracket happens to contain.
+        auto residualAndDerivative = [&](double omega) -> std::pair<double,double>
         {
-          return mmsKineticResidual(curQpoint, localStress, omega, old_damage, curTemperature, tempInc);   
+          return {mmsKineticResidual(curQpoint, localStress, omega, old_damage, curTemperature, tempInc),
+                  mmsDerivativeKineticResidual(localStress, omega, tempInc)};
         };
-        
-        Assert(omegaMax > old_damage, ExcMessage("temperature increment is too big, can't use analytical omega maximum to locate root"));
+
+        const double lowerBound = old_damage;       // damage is non-decreasing within a load step
+        const double upperBound = 0.999;             // stay clear of the (1-omega)->0 singularity
+        const double guess = std::clamp(cur_damage, lowerBound, upperBound);
+        const int digits = static_cast<int>(std::numeric_limits<double>::digits * 0.6); // boost's recommended default
         boost::uintmax_t max_iter = 100;
-        std::pair<double, double> r = boost::math::tools::toms748_solve(f, omegaMax, 0.99, kineticAlgebraicSolverEps, max_iter);
-        cell_damage[q]->damage = (r.first + r.second) / 2.0;
-      } 
+        const boost::uintmax_t iterCap = max_iter;
+        double newDamage = boost::math::tools::newton_raphson_iterate(
+          residualAndDerivative, guess, lowerBound, upperBound, digits, max_iter);
+        if (max_iter >= iterCap)
+          throw std::runtime_error("Newton iteration for the damage kinetic equation did not "
+                                    "converge within the iteration cap");
+        cell_damage[q]->damage = newDamage;
+      }
     }
   }
 
