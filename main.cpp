@@ -141,11 +141,15 @@ namespace StepCooling
                                 Vector<double>   &values) const override;
       virtual void vector_value_list(const std::vector<Point<dim>> &points,
                         std::vector<Vector<double>>   &value_list) const override;
+      virtual void vector_gradient(const Point<dim> &p,
+                        std::vector<Tensor<1,dim>>   &gradients) const override;
+      virtual void vector_gradient_list(const std::vector<Point<dim>> &points,
+                        std::vector<std::vector<Tensor<1,dim>>>   &gradient_list) const override;
 
       void set_prm_consts(const ParameterHandler &prm);
       void set_current_temperature(const double curT);
 
-    private:  
+    private:
       double L, T_0, T_end, curT;
 
   };
@@ -184,6 +188,49 @@ namespace StepCooling
  
     for (unsigned int p = 0; p < n_points; ++p)
       PreciseDisplacementSolution<dim>::vector_value(points[p], value_list[p]);
+  }
+
+  template <int dim>
+  void PreciseDisplacementSolution<dim>::vector_gradient(const Point<dim> & p,
+                                           std::vector<Tensor<1,dim>> &gradients) const
+  {
+    Assert(dim == 3, ExcNotImplemented());
+    AssertDimension(gradients.size(), dim);
+
+    double t = (T_0 - curT) / (T_0 - T_end);
+    const double k = M_PI / L;
+    const double cx = cos(k*p[0]), sx = sin(k*p[0]);
+    const double cy = cos(k*p[1]), sy = sin(k*p[1]);
+    const double cz = cos(k*p[2]), sz = sin(k*p[2]);
+    const double e = exp(-t);
+
+    // gradients of values(0) = cos(kx) cos(ky) cos(kz) * exp(-t)
+    gradients[0][0] = -k * sx * cy * cz * e;
+    gradients[0][1] = -k * cx * sy * cz * e;
+    gradients[0][2] = -k * cx * cy * sz * e;
+
+    // gradients of values(1) = sin(kx) cos(ky) cos(kz) * exp(-t)
+    gradients[1][0] =  k * cx * cy * cz * e;
+    gradients[1][1] = -k * sx * sy * cz * e;
+    gradients[1][2] = -k * sx * cy * sz * e;
+
+    // gradients of values(2) = sin(kx) sin(ky) cos(kz) * exp(-t)
+    gradients[2][0] =  k * cx * sy * cz * e;
+    gradients[2][1] =  k * sx * cy * cz * e;
+    gradients[2][2] = -k * sx * sy * sz * e;
+  }
+
+  template <int dim>
+  void PreciseDisplacementSolution<dim>::vector_gradient_list(
+    const std::vector<Point<dim>> &points,
+    std::vector<std::vector<Tensor<1,dim>>>   &gradient_list) const
+  {
+    const unsigned int n_points = points.size();
+
+    AssertDimension(gradient_list.size(), n_points);
+
+    for (unsigned int p = 0; p < n_points; ++p)
+      PreciseDisplacementSolution<dim>::vector_gradient(points[p], gradient_list[p]);
   }
 
   template <int dim>
@@ -943,18 +990,31 @@ namespace StepCooling
     FEValues<dim> fe_values(fe, quadrature_formula,
     update_values | update_gradients | update_quadrature_points | update_JxW_values);
 
+    const unsigned int n_q_points = quadrature_formula.size();
+
     FullMatrix<double> cell_matrix(dofs_per_cell, dofs_per_cell);
     Vector<double> cell_rhs(dofs_per_cell);
     SymmetricTensor<4,dim> localElasticTensor;
-    SymmetricTensor<4,dim> globalElasticTensor;
     SymmetricTensor<2,dim> localcteTensor;
     SymmetricTensor<2,dim> globalcteTensor;
-    SymmetricTensor<2,dim> iShapeGradSymm;
-    SymmetricTensor<2,dim> jShapeGradSymm;
     Tensor<2,dim> rotTensorGlobalToLocal;
     Tensor<2,dim> rotTensorLocalToGlobal;
-    double damageInQpoint;
-    double JxW;
+
+    // Per-(cell, q) data that does NOT depend on the (i, j) test/trial function
+    // indices: hoisted out of the i,j loop below and evaluated once per q instead of
+    // dofs_per_cell^2 (stiffness) / dofs_per_cell (rhs) times per q. This was the
+    // dominant cost of assembly -- a rank-4 tensor rotation + Kelvin-notation
+    // conversion, previously recomputed dofs_per_cell^2 = 576x more often than needed
+    // for the *same* (cell, q, damage). Still fully point-dependent (per q, inside the
+    // per-cell loop), so a future per-material/per-point elasticity lookup keyed on
+    // cell/q plugs in the same way it would today.
+    std::vector<SymmetricTensor<4,dim>> globalElasticTensor_q(n_q_points);
+    std::vector<double> JxW_q(n_q_points);
+    // Symmetrized shape function gradients also don't depend on j when used as the
+    // "i" operand (or on i when used as the "j" operand) -- precompute per (dof, q)
+    // once and reuse for both roles instead of recomputing dofs_per_cell times over.
+    std::vector<std::vector<SymmetricTensor<2,dim>>> shapeGradSymm(
+      dofs_per_cell, std::vector<SymmetricTensor<2,dim>>(n_q_points));
 
     constraints.clear();
     DoFTools::make_hanging_node_constraints(dof_handler, constraints);
@@ -966,13 +1026,20 @@ namespace StepCooling
                                              constraints);
     constraints.close();
 
+    // AffineConstraints::distribute_local_to_global() ADDS local contributions into
+    // system_matrix/system_rhs rather than overwriting them. assemble_system() is called
+    // repeatedly (once per displacement-damage iteration, and again inside
+    // checkConvergenceCriteria), so without resetting here every call keeps accumulating
+    // on top of all previous calls -- system_matrix/system_rhs would grow unboundedly
+    // over a temperature step instead of reflecting only the current state.
+    system_matrix = 0;
+    system_rhs    = 0;
+
     std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
 
     for (const auto &cell : dof_handler.active_cell_iterators())
     {
-      timer.enter_subsection ("fe_values reinit");
       fe_values.reinit(cell);
-      timer.leave_subsection();
       auto cell_damage = damageInQuadraturePoints.get_data(cell);
       rotTensorGlobalToLocal = getRotTensorGlobalToLocal(cell->material_id());
       rotTensorLocalToGlobal = transpose(rotTensorGlobalToLocal);
@@ -980,46 +1047,41 @@ namespace StepCooling
       cell_matrix = 0;
       cell_rhs    = 0;
 
+      // cte tensor currently depends only on curTemperature and cell orientation
+      // (neither varies with q or i/j), so it is computed once per cell.
+      localcteTensor = cteTensor.getcteTensor(curTemperature);
+      globalcteTensor = Physics::Transformations::basis_transformation(localcteTensor, rotTensorLocalToGlobal);
+
+      for (const unsigned int q : fe_values.quadrature_point_indices())
+      {
+        JxW_q[q] = fe_values.JxW(q);
+        localElasticTensor = elasticityTensor.getElasticityTensor(cell_damage[q]->damage, curTemperature);
+        globalElasticTensor_q[q] = Physics::Transformations::basis_transformation(localElasticTensor, rotTensorLocalToGlobal);
+      }
+
+      for (const unsigned int i : fe_values.dof_indices())
+        for (const unsigned int q : fe_values.quadrature_point_indices())
+          shapeGradSymm[i][q] = symmetrize(fe_values[displacement].gradient(i, q));
+
       for (const unsigned int i : fe_values.dof_indices())
       {
         for (const unsigned int j : fe_values.dof_indices())
         {
           for (const unsigned int q : fe_values.quadrature_point_indices())
           {
-            iShapeGradSymm = symmetrize(fe_values[displacement].gradient(i, q));
-            jShapeGradSymm = symmetrize(fe_values[displacement].gradient(j, q));
-            JxW = fe_values.JxW(q);
-            damageInQpoint = cell_damage[q]->damage;
-            timer.enter_subsection ("geting elastic tensor");
-            localElasticTensor = elasticityTensor.getElasticityTensor(damageInQpoint, curTemperature);
-            timer.leave_subsection();
-            timer.enter_subsection ("calculating cell matrix via 4th order tensor multiplication");
-            globalElasticTensor = Physics::Transformations::basis_transformation(localElasticTensor, rotTensorLocalToGlobal);
-            cell_matrix(i, j) += (iShapeGradSymm * (globalElasticTensor * jShapeGradSymm))*JxW;  
-            timer.leave_subsection();            
+            cell_matrix(i, j) += (shapeGradSymm[i][q] * (globalElasticTensor_q[q] * shapeGradSymm[j][q])) * JxW_q[q];
           }
         }
         for (const unsigned int q : fe_values.quadrature_point_indices())
         {
-          timer.enter_subsection ("rhs calculation");
-          iShapeGradSymm = symmetrize(fe_values[displacement].gradient(i, q));
-          JxW = fe_values.JxW(q);
-          damageInQpoint = cell_damage[q]->damage;
-          localcteTensor = cteTensor.getcteTensor(curTemperature);
-          globalcteTensor = Physics::Transformations::basis_transformation(localcteTensor, rotTensorLocalToGlobal);
-          localElasticTensor = elasticityTensor.getElasticityTensor(damageInQpoint, curTemperature);
-          globalElasticTensor = Physics::Transformations::basis_transformation(localElasticTensor, rotTensorLocalToGlobal);
-          cell_rhs(i) += ((iShapeGradSymm * (globalElasticTensor * globalcteTensor)) * (curTemperature - T0)) * JxW;
+          cell_rhs(i) += ((shapeGradSymm[i][q] * (globalElasticTensor_q[q] * globalcteTensor)) * (curTemperature - T0)) * JxW_q[q];
           mmsBodyForce.vector_value(fe_values.quadrature_point(q), bodyForceValue);
-          for (unsigned int d = 0; d < dim; ++d) bodyForceTensor[d] = bodyForceValue[d]; 
-          cell_rhs(i) +=  bodyForceTensor * fe_values[displacement].value(i, q) * JxW; 
-          timer.leave_subsection();      
+          for (unsigned int d = 0; d < dim; ++d) bodyForceTensor[d] = bodyForceValue[d];
+          cell_rhs(i) += bodyForceTensor * fe_values[displacement].value(i, q) * JxW_q[q];
         }
       }
       cell->get_dof_indices(local_dof_indices);
-      timer.enter_subsection ("destribution to global");
       constraints.distribute_local_to_global(cell_matrix, cell_rhs, local_dof_indices, system_matrix, system_rhs);
-      timer.leave_subsection();  
     }
   }
 
@@ -1035,7 +1097,12 @@ namespace StepCooling
 
     cg.solve(system_matrix,  solDisplacement, system_rhs, preconditioner);
 
-    Assert(solver_control.last_check() == SolverControl::success, ExcMessage("Solver did not converge."));
+    // A plain runtime check rather than Assert(): Assert() compiles to a no-op in Release
+    // builds (-DNDEBUG), so relying on it here would mean a genuinely non-converged CG
+    // solve could silently pass through in Release with no indication anything went wrong.
+    if (solver_control.last_check() != SolverControl::success)
+      throw std::runtime_error("CG solver did not converge (last residual " +
+                                std::to_string(solver_control.last_value()) + ")");
 
     constraints.distribute(solDisplacement);
   }
@@ -1258,7 +1325,12 @@ namespace StepCooling
 
     rotmatOrientationCell.push_back(rotation_matrix);
 
-    do 
+    setup_system(); // was previously missing: without this call, dof_handler has zero DoFs,
+                     // damageInQuadraturePoints/material property functors are never initialized,
+                     // and system_matrix/rhs/solution vectors stay unsized (see cubeTest.cpp's
+                     // meshTest()/elasticCalculationTest() for the pattern this followed)
+
+    do
     {
       temperatureStepNumber++;
       calculateSolutionTemperatureStep(curT, dT, temperatureStepNumber);
@@ -1290,19 +1362,49 @@ namespace StepCooling
   template <int dim>
   void ElasticProblem<dim>::calculateSolutionTemperatureStep(double curT, double dT, int temperatureStepNumber)
   {
-    Vector<double> oldSolDisplacement = solDisplacement;
-    Vector<double> solutionIncrement;
+    // "prev*" tracks the *previous inner iteration's* state, so the increment-based
+    // convergence checks measure iteration-to-iteration change (as their tolerances
+    // assume) rather than the total change since the start of this temperature step.
+    // On iteration 1, prev* is still the end-of-previous-temperature-step state, which
+    // is the correct reference point for that first increment.
+    Vector<double> prevSolDisplacement = solDisplacement;
     CellDataStorage<typename Triangulation<dim>::cell_iterator,
-                DamageQData> oldDamageInQuadraturePoints = damageInQuadraturePoints;
+                DamageQData> prevDamageInQuadraturePoints = damageInQuadraturePoints;
+    const unsigned int maxIterations = prm.get_integer({"SolverParameters"}, "MaxNumberOfIterations");
     unsigned int dispDamageIterationNumber = 0;
+    bool converged = false;
     do
     {
-      dispDamageIterationNumber++; 
+      dispDamageIterationNumber++;
       assemble_system(curT);
       solve();
       predict_damage_tempInc_external_solver(curT, dT);
       process_solution(temperatureStepNumber, dispDamageIterationNumber);
-    } while (!checkConvergenceCriteria(curT, oldSolDisplacement, oldDamageInQuadraturePoints));
+
+      converged = checkConvergenceCriteria(curT, prevSolDisplacement, prevDamageInQuadraturePoints);
+
+      prevSolDisplacement = solDisplacement;
+      prevDamageInQuadraturePoints = damageInQuadraturePoints;
+
+      if (!converged && dispDamageIterationNumber >= maxIterations)
+        throw std::runtime_error("Displacement-damage iteration did not converge within "
+                                  "MaxNumberOfIterations = " + std::to_string(maxIterations) +
+                                  " iterations at temperature step " + std::to_string(temperatureStepNumber));
+    } while (!converged);
+
+    // The kinetic equation's residual (see mmsKineticResidual/predict_damage_tempInc_external_solver)
+    // integrates the damage increment against old_damage, i.e. the damage at the *start* of the
+    // current temperature step. That baseline must be advanced once this step has converged,
+    // otherwise every subsequent temperature step keeps integrating from the previous old_damage
+    // (stuck at 0.0 for the whole run, since nothing else ever assigns to it).
+    const QGauss<dim> quadrature_formula(fe.degree + 1);
+    const unsigned int n_q_points = quadrature_formula.size();
+    for (const auto &cell : dof_handler.active_cell_iterators())
+    {
+      auto cell_damage = damageInQuadraturePoints.get_data(cell);
+      for (unsigned int q = 0; q < n_q_points; ++q)
+        cell_damage[q]->old_damage = cell_damage[q]->damage;
+    }
   }
 
   template <int dim>
@@ -1331,13 +1433,29 @@ namespace StepCooling
 
     assemble_system(curT);
     Vector<double> systemResidual(system_matrix.m());
-    double systemResidualNorm = system_matrix.residual(systemResidual, solDisplacement, system_rhs);
+    system_matrix.residual(systemResidual, solDisplacement, system_rhs);
+    // Constrained-DOF rows carry a placeholder diagonal that distribute_local_to_global()
+    // writes purely to keep the matrix well-conditioned for the preconditioner -- with no
+    // matching right-hand-side entry, since those rows are never meant to be interpreted as
+    // real equilibrium equations (their value is fixed directly via constraints.distribute(),
+    // not solved for). Left in, a handful of O(1e10) placeholder-diagonal rows swamp the
+    // residual norm and it plateaus at a large, meaningless constant regardless of how well
+    // the free-DOF system actually solved. Zero them out before taking the norm, matching the
+    // standard deal.II idiom (e.g. step-15's Newton residual) for excluding constrained DOFs
+    // from a residual/error norm.
+    constraints.set_zero(systemResidual);
+    double systemResidualNorm = systemResidual.l2_norm();
     double systemRhsNorm = system_rhs.l2_norm(); // should check, that this norm will not be too small;
     double relativeSystemResidualNorm  = systemResidualNorm / systemRhsNorm;
 
     double solIncrementEps = prm.get_double({"SolverParameters"}, "DisplacementIncrementRelativeTolerance");
     double damageIncrementEps = prm.get_double({"SolverParameters"}, "DamageIncrementRelativeTolerance");
     double forseResidualEps = prm.get_double({"SolverParameters"}, "ForceEqulibriumRelativeTolerance");
+
+    std::cout << "    convergence check: relSolInc=" << relativeSolutionIncrementNorm
+              << " (tol " << solIncrementEps << "), maxDamageInc=" << maxDamageIncrement
+              << " (tol " << damageIncrementEps << "), relResidual=" << relativeSystemResidualNorm
+              << " (tol " << forseResidualEps << ")" << std::endl;
 
     if (relativeSolutionIncrementNorm < solIncrementEps and maxDamageIncrement < damageIncrementEps and relativeSystemResidualNorm < forseResidualEps){return true;}
     else {return false;}
