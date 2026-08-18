@@ -531,6 +531,40 @@ namespace StepCooling
                         "Relative tolerance of iterative algebraic solver for kinetic equation");
     }
     prm.leave_subsection();
+    prm.enter_subsection("MeshRefinementParameters");
+    {
+      prm.declare_entry("NumberOfRefinementCycles",
+                        "1",
+                        Patterns::Integer(1),
+                        "Number of mesh refinement cycles to run (1 = no refinement, just the "
+                        "initial mesh). Each cycle after the first refines the mesh and re-solves "
+                        "the full temperature range from scratch on it; damage does not carry over "
+                        "between cycles (see refine_grid()/setup_system()), so this is intended for "
+                        "mesh convergence studies on damage-free (or single-cycle) MMS tests, not "
+                        "yet for refining mid-simulation on a run where damage has already "
+                        "accumulated.");
+
+      prm.declare_entry("RefinementStrategy",
+                        "adaptive",
+                        Patterns::Selection("adaptive|uniform"),
+                        "'adaptive' refines via KellyErrorEstimator + refine_and_coarsen_fixed_number "
+                        "(FractionToRefine/FractionToCoarsen). 'uniform' does a single global "
+                        "refinement of every cell each cycle (triangulation.refine_global(1)) -- the "
+                        "textbook mesh-convergence-study method, useful as a cross-check against "
+                        "'adaptive' since global refinement isn't solution-dependent and has a clean "
+                        "theoretical convergence rate to compare against.");
+
+      prm.declare_entry("FractionToRefine",
+                        "0.3",
+                        Patterns::Double(0, 1),
+                        "Fraction of cells (by estimated error) to flag for refinement each cycle");
+
+      prm.declare_entry("FractionToCoarsen",
+                        "0.03",
+                        Patterns::Double(0, 1),
+                        "Fraction of cells (by estimated error) to flag for coarsening each cycle");
+    }
+    prm.leave_subsection();
     prm.enter_subsection("OutputParameters");
     {
       prm.declare_entry("OutputDirectory",
@@ -727,10 +761,10 @@ namespace StepCooling
     void solve();
     //void predict_damage_tempInc(double curTemperature, double tempInc);
     void predict_damage_tempInc_external_solver(double curTemperature, double tempInc);
-    void calculateSolutionTemperatureStep(double curT, double dT, int temperatureStepNumber);
-    void refine_grid();
+    void calculateSolutionTemperatureStep(double curT, double dT, unsigned int refinementCycle, int temperatureStepNumber);
+    void refine_grid(double fractionToRefine, double fractionToCoarse);
     void output_results(const unsigned int cycle = 1) const;
-    void process_solution(const unsigned int tempStepNum, const unsigned int iterSolverStepNum);
+    void process_solution(unsigned int refinementCycle, const unsigned int tempStepNum, const unsigned int iterSolverStepNum);
     void parse_cellToMaterial_data(std::string fileName);
 
     bool checkActivationCriteria(SymmetricTensor<2,dim> localStress);
@@ -956,14 +990,21 @@ namespace StepCooling
   }
 
   template <int dim>
-  void ElasticProblem<dim>::setup_system() //never before mesh refinement or damageInQuadraturePoints must be reinitialized
-  { 
+  void ElasticProblem<dim>::setup_system() // safe to call again after mesh refinement: clears and
+                                            // freshly reinitializes damageInQuadraturePoints (damage
+                                            // resets to 0 on the new mesh -- refinement does not
+                                            // transfer quadrature-point data, by design for now)
+  {
     elasticityTensor.setFromPrm(prm);
     cteTensor.setFromPrm(prm);
     preciseSolution.set_prm_consts(prm);
     TimerOutput::Scope timer_section(timer, "Setup of system");
     const QGauss<dim> quadrature_formula( fe.degree + 1);
     const unsigned int n_q_points    = quadrature_formula.size();
+    // Without this, repeated setup_system() calls (once per refinement cycle) would leave
+    // orphaned entries for cells that are no longer active (refined away or coarsened into
+    // their parent) sitting in damageInQuadraturePoints alongside the fresh ones.
+    damageInQuadraturePoints.clear();
     damageInQuadraturePoints.initialize(triangulation.begin_active(),
                                           triangulation.end(),
                                           n_q_points);
@@ -1127,10 +1168,12 @@ namespace StepCooling
   }
 
   template <int dim>
-  void ElasticProblem<dim>::refine_grid()
+  void ElasticProblem<dim>::refine_grid(double fractionToRefine, double fractionToCoarse)
   {
     Vector<float> estimated_error_per_cell(triangulation.n_active_cells());
 
+    // KellyErrorEstimator estimates jumps in the solution gradient across cell *faces*,
+    // hence a (dim-1)-dimensional face quadrature rule, not a dim-dimensional cell one.
     KellyErrorEstimator<dim>::estimate(dof_handler,
                                        QGauss<dim - 1>(fe.degree + 1),
                                        {},
@@ -1139,10 +1182,18 @@ namespace StepCooling
 
     GridRefinement::refine_and_coarsen_fixed_number(triangulation,
                                                     estimated_error_per_cell,
-                                                    0.3,
-                                                    0.03);
+                                                    fractionToRefine,
+                                                    fractionToCoarse);
 
+    // No quadrature-point data transfer across refinement/coarsening (yet -- see
+    // setup_system()'s comment): damage is reset to 0 on the new mesh via the
+    // setup_system() call that follows this function at every call site. This is
+    // exact (not an approximation) for any state that starts a refinement cycle at
+    // damage=0 everywhere, e.g. a fresh MMS mesh-convergence run; it would lose real
+    // accumulated damage if refinement were ever triggered mid-simulation on a run
+    // where damage is already nonzero, which is not yet supported.
     triangulation.execute_coarsening_and_refinement();
+    setup_system();
   }
 
   // template <int dim>
@@ -1327,19 +1378,15 @@ namespace StepCooling
   template <int dim>
   void ElasticProblem<dim>::run()
   {
-    double curT = prm.get_double({"ModelParameters"}, "InitialTemperature");
+    double T0 = prm.get_double({"ModelParameters"}, "InitialTemperature");
     double Tend =  prm.get_double({"ModelParameters"}, "FinalTemperature");
     double dT = prm.get_double({"ModelParameters"}, "TemperatureIncrement");
-
-    double testVar = prm.get_double({"MaterialParameters", "DamageParameters"}, "a_kineticParam");
-
-    unsigned int temperatureStepNumber = 0;
 
     std::string mshFileName = prm.get({"InputFiles"}, "MeshFile");
     std::string cellToMaterialFileName = prm.get({"InputFiles"}, "CellToMaterialFile");
     GridIn <dim> grid_in;
     grid_in.attach_triangulation(this->triangulation);
-    std::ifstream input_file(mshFileName); 
+    std::ifstream input_file(mshFileName);
     auto mshStream = parseMSHandPrepareStream(mshFileName);
     grid_in.read_msh(mshStream); //it will read only one phsycial tag, related to id of cell (so u need to use special map material[cellId] for material, rotation have direct relation to cell id)
     parse_cellToMaterial_data(cellToMaterialFileName);
@@ -1355,20 +1402,67 @@ namespace StepCooling
 
     auto rotation_matrix = Physics::Transformations::Rotations::rotation_matrix_3d(axis, angle);
 
+    // parseMSHandPrepareStream() (above) already pushed whatever real crystallite orientation
+    // the mesh file's $ElsetOrientations section carries. Since every cell's material_id is 1,
+    // getRotTensorGlobalToLocal(1) resolves to rotmatOrientationCell[0] -- so without clearing
+    // here, that mesh-file orientation (not the identity this test intends) is what actually
+    // gets used, silently. Clear so the manual override below lands at index 0 as intended.
+    rotmatOrientationCell.clear();
     rotmatOrientationCell.push_back(rotation_matrix);
 
-    setup_system(); // was previously missing: without this call, dof_handler has zero DoFs,
-                     // damageInQuadraturePoints/material property functors are never initialized,
-                     // and system_matrix/rhs/solution vectors stay unsized (see cubeTest.cpp's
-                     // meshTest()/elasticCalculationTest() for the pattern this followed)
-
-    do
+    // getRotTensorGlobalToLocal indexes rotmatOrientationCell[material_id - 1] with no bounds
+    // checking of its own (a plain std::vector::operator[]) -- an out-of-range material_id is
+    // silent undefined behavior in a Release build, not a caught error. This is exactly the
+    // mechanism behind a real bug found and fixed in this run (parseMSHandPrepareStream() had
+    // already pushed the mesh file's real crystallite orientation at index 0 before the manual
+    // override above; every cell's material_id happens to be 1, so that mesh-file orientation
+    // -- not the intended identity -- was silently what got used). Check eagerly here so any
+    // future mismatch (e.g. a multi-material mesh not matched by rotmatOrientationCell's size)
+    // fails loudly instead of reading garbage.
+    for (const auto &cell : triangulation.active_cell_iterators())
     {
-      temperatureStepNumber++;
-      calculateSolutionTemperatureStep(curT, dT, temperatureStepNumber);
-      output_results(temperatureStepNumber);
-      curT = curT - dT;
-    } while (curT < Tend);
+      const auto materialId = cell->material_id();
+      if (materialId < 1 || materialId > rotmatOrientationCell.size())
+        throw std::runtime_error("cell material_id " + std::to_string(materialId) +
+                                  " is out of range for rotmatOrientationCell (size " +
+                                  std::to_string(rotmatOrientationCell.size()) + ")");
+    }
+
+    // Outer mesh-refinement-cycle loop, for mesh convergence studies: each cycle refines
+    // (cycle 0 just does the initial setup) and then re-solves the *entire* temperature
+    // range from scratch on the new mesh. Damage does not carry over between cycles (see
+    // refine_grid()/setup_system()), so this is for damage-free/single-cycle MMS studies,
+    // not yet for refining mid-simulation on a run with already-accumulated damage.
+    const unsigned int nRefinementCycles = prm.get_integer({"MeshRefinementParameters"}, "NumberOfRefinementCycles");
+    const std::string refinementStrategy = prm.get({"MeshRefinementParameters"}, "RefinementStrategy");
+    const double fractionToRefine = prm.get_double({"MeshRefinementParameters"}, "FractionToRefine");
+    const double fractionToCoarsen = prm.get_double({"MeshRefinementParameters"}, "FractionToCoarsen");
+
+    for (unsigned int refinementCycle = 0; refinementCycle < nRefinementCycles; ++refinementCycle)
+    {
+      if (refinementCycle == 0)
+        setup_system(); // was previously missing: without this call, dof_handler has zero DoFs,
+                         // damageInQuadraturePoints/material property functors are never initialized,
+                         // and system_matrix/rhs/solution vectors stay unsized (see cubeTest.cpp's
+                         // meshTest()/elasticCalculationTest() for the pattern this followed)
+      else if (refinementStrategy == "uniform")
+      {
+        triangulation.refine_global(1);
+        setup_system();
+      }
+      else
+        refine_grid(fractionToRefine, fractionToCoarsen);
+
+      double curT = T0;
+      unsigned int temperatureStepNumber = 0;
+      do
+      {
+        temperatureStepNumber++;
+        calculateSolutionTemperatureStep(curT, dT, refinementCycle, temperatureStepNumber);
+        output_results(refinementCycle * 1000 + temperatureStepNumber);
+        curT = curT - dT;
+      } while (curT < Tend);
+    }
 
     convergence_table.set_precision("L2", 3);
     convergence_table.set_precision("H1", 3);
@@ -1392,7 +1486,7 @@ namespace StepCooling
   }
 
   template <int dim>
-  void ElasticProblem<dim>::calculateSolutionTemperatureStep(double curT, double dT, int temperatureStepNumber)
+  void ElasticProblem<dim>::calculateSolutionTemperatureStep(double curT, double dT, unsigned int refinementCycle, int temperatureStepNumber)
   {
     // "prev*" tracks the *previous inner iteration's* state, so the increment-based
     // convergence checks measure iteration-to-iteration change (as their tolerances
@@ -1411,7 +1505,7 @@ namespace StepCooling
       assemble_system(curT);
       solve();
       predict_damage_tempInc_external_solver(curT, dT);
-      process_solution(temperatureStepNumber, dispDamageIterationNumber);
+      process_solution(refinementCycle, temperatureStepNumber, dispDamageIterationNumber);
 
       converged = checkConvergenceCriteria(curT, prevSolDisplacement, prevDamageInQuadraturePoints);
 
@@ -1437,6 +1531,7 @@ namespace StepCooling
       for (unsigned int q = 0; q < n_q_points; ++q)
         cell_damage[q]->old_damage = cell_damage[q]->damage;
     }
+
   }
 
   template <int dim>
@@ -1494,7 +1589,7 @@ namespace StepCooling
   }
 
   template <int dim>
-  void ElasticProblem<dim>::process_solution(const unsigned int tempStepNum, const unsigned int iterSolverStepNum)
+  void ElasticProblem<dim>::process_solution(unsigned int refinementCycle, const unsigned int tempStepNum, const unsigned int iterSolverStepNum)
   {
     Vector<float> difference_per_cell(triangulation.n_active_cells());
     VectorTools::integrate_difference(dof_handler,
@@ -1535,12 +1630,13 @@ namespace StepCooling
     const unsigned int n_active_cells = triangulation.n_active_cells();
     const unsigned int n_dofs         = dof_handler.n_dofs();
  
-    std::cout << "Temperature step number " << tempStepNum << "Displacement-iterative solution step number"<< iterSolverStepNum << ':' << std::endl
+    std::cout << "Refinement cycle " << refinementCycle << ", temperature step number " << tempStepNum
+              << ", displacement-iterative solution step number " << iterSolverStepNum << ':' << std::endl
               << "   Number of active cells:       " << n_active_cells
               << std::endl
               << "   Number of degrees of freedom: " << n_dofs << std::endl;
- 
-    convergence_table.add_value("cycle", tempStepNum);
+
+    convergence_table.add_value("cycle", refinementCycle);
     convergence_table.add_value("cells", n_active_cells);
     convergence_table.add_value("dofs", n_dofs);
     convergence_table.add_value("L2", L2_error);
