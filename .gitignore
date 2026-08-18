@@ -2,3 +2,4 @@ build/
 *.vtk
 *.o
 .claude/
+compile_commands.json
