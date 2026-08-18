@@ -3,3 +3,5 @@ build/
 *.o
 .claude/
 compile_commands.json
+mySSHkey
+mySSHkey.pub
