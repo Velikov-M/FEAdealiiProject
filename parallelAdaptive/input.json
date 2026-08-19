@@ -25,7 +25,7 @@
     "MaterialParameters": {
         "DamageParameters": {
             "StressThreshold": {
-                "value": "200e6",
+                "value": "1e7",
                 "default_value": "200e6",
                 "documentation": "Stress threshold for damage activation",
                 "pattern": "13",
@@ -39,7 +39,7 @@
                 "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
             },
             "m_kineticParam": {
-                "value": "2",
+                "value": "1",
                 "default_value": "2",
                 "documentation": "Kinetic parameter m in the kinetic equation",
                 "pattern": "15",
@@ -151,7 +151,7 @@
     },
     "MeshRefinementParameters": {
         "NumberOfRefinementCycles": {
-            "value": "3"
+            "value": "1"
         },
         "RefinementStrategy": {
             "value": "uniform"
@@ -179,7 +179,7 @@
             "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
         },
         "TemperatureIncrement": {
-            "value": "200",
+            "value": "10",
             "default_value": "100",
             "documentation": "Temperature increment for each step",
             "pattern": "1",

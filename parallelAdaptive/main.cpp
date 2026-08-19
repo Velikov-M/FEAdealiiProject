@@ -284,10 +284,23 @@ namespace StepCooling
   {
     Assert(dim == 3, ExcNotImplemented());
     AssertDimension(values.size(), dim);
-    double t = (T_0 - curT) / (T_0 - T_end); 
-    const double bx = (1.0/4.0)*(2*(2*pow(M_PI, 2)*C13_0 + pow(M_PI, 2)*C44_0)*sin(M_PI*p[1]/L)*sin(M_PI*p[2]/L)*cos(M_PI*p[0]/L) + ((pow(M_PI, 2)*C11_0 + 3*pow(M_PI, 2)*C12_0)*sin(M_PI*p[1]/L)*cos(M_PI*p[0]/L) + (5*pow(M_PI, 2)*C11_0 - pow(M_PI, 2)*C12_0 + 2*pow(M_PI, 2)*C44_0)*cos(M_PI*p[0]/L)*cos(M_PI*p[1]/L))*cos(M_PI*p[2]/L))*exp(-t)/pow(L, 2);
-    const double by = (1.0/4.0)*(2*(2*pow(M_PI, 2)*C13_0 + pow(M_PI, 2)*C44_0)*sin(M_PI*p[0]/L)*sin(M_PI*p[2]/L)*cos(M_PI*p[1]/L) + (-(pow(M_PI, 2)*C11_0 + 3*pow(M_PI, 2)*C12_0)*sin(M_PI*p[0]/L)*sin(M_PI*p[1]/L) + (5*pow(M_PI, 2)*C11_0 - pow(M_PI, 2)*C12_0 + 2*pow(M_PI, 2)*C44_0)*sin(M_PI*p[0]/L)*cos(M_PI*p[1]/L))*cos(M_PI*p[2]/L))*exp(-t)/pow(L, 2);
-    const double bz = -1.0/2.0*(1.0*pow(M_PI, 2)*C33_0*sqrt(t)*sin(M_PI*p[0]/L)*sin(M_PI*p[1]/L)*cos(M_PI*p[2]/L) - 2*(pow(M_PI, 2)*C33_0 + pow(M_PI, 2)*C44_0)*sin(M_PI*p[0]/L)*sin(M_PI*p[1]/L)*cos(M_PI*p[2]/L) + ((2*pow(M_PI, 2)*C13_0 + pow(M_PI, 2)*C44_0)*sin(M_PI*p[0]/L)*sin(M_PI*p[1]/L) + (2*pow(M_PI, 2)*C13_0 + pow(M_PI, 2)*C44_0)*sin(M_PI*p[0]/L)*cos(M_PI*p[1]/L))*sin(M_PI*p[2]/L))*exp(-t)/pow(L, 2);
+    double t = (T_0 - curT) / (T_0 - T_end);
+    const double T = curT;
+    // Regenerated for the spatially-varying damage field omega(x,y,z,t) = 0.5*t^1.5*(1 +
+    // 0.3*sin(2*pi*x/L)*cos(2*pi*y/L)*sin(2*pi*z/L)) -- see myNotebook.ipynb cell 5. t^1.5 (not
+    // sqrt(t), which this test started with): domega/dt = 0.75*sqrt(t)*(1+0.3*S) has ZERO slope
+    // at t=0 and is finite everywhere on [0,1] -- sqrt(t) has domega/dt = 0.25/sqrt(t) -> infinity
+    // as t->0, which meant any finite backward-Euler step landing near t=0 badly overshot there
+    // regardless of step count (found empirically). Since C33 varies with position (via omega),
+    // the thermal-strain contribution to the stress divergence is no longer identically zero (it
+    // was in the original spatially-uniform-omega test only because both C and the thermal strain
+    // were spatially uniform there), so T now genuinely appears here, not just t. Verified against
+    // a standalone sympy replication of the notebook's derivation, mechanically cross-checked
+    // (generated C code vs raw symbolic evaluation) to floating-point precision -- see
+    // conversation history.
+    const double bx = (1.0/4.0)*pow(M_PI, 2)*(4*C11_0*cos(M_PI*p[1]/L)*cos(M_PI*p[2]/L) + 4*C12_0*sin(M_PI*p[1]/L)*cos(M_PI*p[2]/L) + 4*C13_0*sin(M_PI*p[1]/L)*sin(M_PI*p[2]/L) + 2*C44_0*cos(M_PI*(p[1] - p[2])/L) + M_SQRT2*(C11_0 - C12_0)*sin(M_PI*(1.0/4.0 + p[1]/L))*cos(M_PI*p[2]/L))*exp(-t)*cos(M_PI*p[0]/L)/pow(L, 2);
+    const double by = (1.0/4.0)*pow(M_PI, 2)*(4*C11_0*cos(M_PI*p[1]/L)*cos(M_PI*p[2]/L) - 4*C12_0*sin(M_PI*p[1]/L)*cos(M_PI*p[2]/L) + 4*C13_0*sin(M_PI*p[2]/L)*cos(M_PI*p[1]/L) + 2*M_SQRT2*C44_0*sin(M_PI*(1.0/4.0 + p[2]/L))*cos(M_PI*p[1]/L) + M_SQRT2*(C11_0 - C12_0)*sin(M_PI*(1.0/4.0 - p[1]/L))*cos(M_PI*p[2]/L))*exp(-t)*sin(M_PI*p[0]/L)/pow(L, 2);
+    const double bz = (1.0/20.0)*M_PI*(-20*M_PI*C13_0*sin(M_PI*p[0]/L)*sin(M_PI*p[1]/L)*sin(M_PI*p[2]/L) - 20*M_PI*C13_0*sin(M_PI*p[0]/L)*sin(M_PI*p[2]/L)*cos(M_PI*p[1]/L) - 6*C33_0*pow(t, 3.0/2.0)*(L*alpha33*(T - T_0)*exp(t) + M_PI*sin(M_PI*p[0]/L)*sin(M_PI*p[1]/L)*sin(M_PI*p[2]/L))*sin(2*M_PI*p[0]/L)*cos(2*M_PI*p[1]/L)*cos(2*M_PI*p[2]/L) - M_PI*C33_0*(pow(t, 3.0/2.0)*(3*sin(2*M_PI*p[0]/L)*sin(2*M_PI*p[2]/L)*cos(2*M_PI*p[1]/L) + 10) - 20)*sin(M_PI*p[0]/L)*sin(M_PI*p[1]/L)*cos(M_PI*p[2]/L) + 10*M_SQRT2*M_PI*C44_0*sin(M_PI*(1.0/4.0 - p[2]/L))*sin(M_PI*p[0]/L)*sin(M_PI*p[1]/L) + 10*M_PI*C44_0*sin(M_PI*p[0]/L)*sin(M_PI*(p[1] - p[2])/L))*exp(-t)/pow(L, 2);
     values(0) = bx;
     values(1) = by;
     values(2) = bz;
@@ -786,7 +799,7 @@ namespace StepCooling
     double derivativeKineticResidual(SymmetricTensor<2,dim> localStress, double curOmega, double tempInc);
 
     double mmsKineticResidual(const Point<dim> &p, const SymmetricTensor<2,dim> &localStress, double curOmega, double oldOmega, double curT, double tempInc);
-    double mmsDerivativeKineticResidual(const SymmetricTensor<2,dim> &localStress, double curOmega, double tempInc);
+    double mmsDerivativeKineticResidual(const Point<dim> &p, double curOmega, double curT, double tempInc);
 
     ElasticityTensor<dim> elasticityTensor;
     CteTensor<dim> cteTensor;
@@ -964,14 +977,60 @@ namespace StepCooling
     double T = curT;
     double t = (T_0 - curT) / (T_0 - T_end);
 
-    double actingStress = localStress[dim-1][dim-1] - stressThreshold;
-    Assert(actingStress > 0, ExcMessage("acting stress is negative, this function should've not be called"));
-    double defaultPart = curOmega - oldOmega - A * std::pow((actingStress /(1-curOmega)), m) * tempInc;
+    // Uses the EXACT/manufactured stress (not the real, currently-iterating localStress) here
+    // deliberately: adding a defaultPart driven by the real stress to a kineticAddTerm derived
+    // from the exact stress only shares a root once the coupled displacement-damage system has
+    // already converged (real stress == exact stress) -- during earlier iterations they can
+    // differ by orders of magnitude (e.g. real stress genuinely compressive while the exact
+    // target is large and tensile), so the combined residual can have no root in [old_damage,
+    // 0.999] at all, and Newton silently returns a non-root at the bound instead of failing
+    // loudly. This is an artifact specific to this MMS construction (mixing two different
+    // stress fields in one equation), not something with a counterpart in the real, non-MMS
+    // model, where the kinetic law is self-referential against whatever the real stress
+    // currently is. Using the exact stress throughout reframes this test as validating the
+    // kinetic-equation ODE integrator itself (in isolation from elasticity-convergence state,
+    // which is exactly what an MMS test of the ODE integrator should target) -- see
+    // conversation history for the full reasoning. The exact stress is independent of curOmega
+    // (it depends on the exact/manufactured omega(x,y,z,t), not the numerical iterate), so
+    // (unlike before) it does not need Macaulay-clamping against a runtime-varying quantity --
+    // it's Macaulay-clamped once, from the same fixed exact-solution evaluation as
+    // kineticAddTerm.
+    const double omegaExact = 0.5*pow(t, 1.5)*(1 + 0.3*sin(2*M_PI*p[0]/L)*cos(2*M_PI*p[1]/L)*sin(2*M_PI*p[2]/L));
+    const double term1 = -alpha_11*(T - T_0) - M_PI*exp(-t)*sin(M_PI*p[0]/L)*sin(M_PI*p[1]/L)*cos(M_PI*p[2]/L)/L;
+    const double term2 = -alpha_11*(T - T_0) - M_PI*exp(-t)*sin(M_PI*p[0]/L)*cos(M_PI*p[1]/L)*cos(M_PI*p[2]/L)/L;
+    const double term3 = -alpha_33*(T - T_0) - M_PI*exp(-t)*sin(M_PI*p[0]/L)*sin(M_PI*p[1]/L)*sin(M_PI*p[2]/L)/L;
+    const double sigmaZZExact = C13_0*term1 + C13_0*term2 + C33_0*(1 - omegaExact)*term3;
+    double actingStress = std::max(sigmaZZExact - stressThreshold, 0.0);
+    // Normalized by stressThreshold to match the notebook's convention (A*(macaulay/sigma_th)^m
+    // *(1/(1-omega))^m -- see cell 19/kineticAddTerm below), which defaultPart here previously
+    // did not: a pre-existing inconsistency (also present in the non-MMS kineticResidual, which
+    // has the same un-normalized form) that only became visible once damage actually activated
+    // for the first time. With this test's deliberately-lowered StressThreshold, actingStress is
+    // ~1e10 and the un-normalized bare term was ~1e15 vs. kineticAddTerm's ~1e3 -- nowhere near
+    // sharing a root.
+    double defaultPart = curOmega - oldOmega - A * std::pow((actingStress / stressThreshold /(1-curOmega)), m) * tempInc;
 
-    // should be changed for every specific MMS test, so that the exact solution will satisfy the kinetic equation with this additional part, so it can be used for testing the kinetic equation solver
+    // Regenerated for the spatially-varying damage field omega(x,y,z,t) = 0.5*t^1.5*(1 +
+    // 0.3*sin(2*pi*x/L)*cos(2*pi*y/L)*sin(2*pi*z/L)) -- see myNotebook.ipynb cells 5 and 19.
+    // t^1.5 (not the sqrt(t) this test started with, nor plain linear t): domega/dt =
+    // 0.75*sqrt(t)*(1+0.3*S) has ZERO slope at t=0 and is finite everywhere on [0,1] -- sqrt(t)
+    // has domega/dt = 0.25/sqrt(t) -> infinity as t->0, which meant ANY finite backward-Euler
+    // step landing near t=0 badly overshot the true trajectory there, regardless of step count
+    // (found empirically: even 20 uniform steps still overshot by ~50% at t=0.05). Cell 19 uses
+    // the chain rule domega/ds = (domega/dt)*(dt/ds), with s = T_0-T a monotonically-INCREASING
+    // "cooling extent" (matching defaultPart's tempInc-as-positive-magnitude convention below,
+    // not domega/dT w.r.t. the real, decreasing, signed T -- domega/dT = -domega/ds; using
+    // domega/dT here instead flips the sign of the whole additive term and previously broke
+    // Newton's root existence at Macaulay-inactive points). dt/ds is computed from the EXPLICIT
+    // formula t=(T_0-T)/(T_0-T_end), NOT via diff(t,T) -- t is deliberately an independent
+    // symbol here (see cell 4's note), so diff(t,T) silently evaluates to exactly 0, the same
+    // chain-rule pitfall cell 4 already warns about for domega/dT (caught a second time
+    // regenerating this cell). Verified via standalone sympy replication, mechanically
+    // cross-checked (generated C code vs raw symbolic evaluation, at Macaulay-active/inactive
+    // points and near t=0) to floating-point precision -- see conversation history.
     auto kineticAddTerm = [&](const Point<dim> &p, const double t) -> double
     {
-      const double fadd = A*pow(-1/(0.5*sqrt(t) - 1), m)*pow(-1.0/2.0*(M_PI*C33_0*sin(M_PI*p[0]/L)*sin(M_PI*p[1]/L)*sin(M_PI*p[2]/L)*fabs(L) + L*sigma_th*exp(t)*fabs(L) - L*fabs(M_PI*C33_0*sin(M_PI*p[0]/L)*sin(M_PI*p[1]/L)*sin(M_PI*p[2]/L) + L*sigma_th*exp(t) + 2*alpha_11*(C13_0*L*T*exp(t) - C13_0*L*T_0*exp(t)) + alpha_33*(C33_0*L*T*exp(t) - C33_0*L*T_0*exp(t)) - sqrt(t)*(0.5*M_PI*C33_0*sin(M_PI*p[0]/L)*sin(M_PI*p[1]/L)*sin(M_PI*p[2]/L) + alpha_33*(0.5*C33_0*L*T*exp(t) - 0.5*C33_0*L*T_0*exp(t))) + (M_PI*C13_0*sin(M_PI*p[0]/L)*sin(M_PI*p[1]/L) + M_PI*C13_0*sin(M_PI*p[0]/L)*cos(M_PI*p[1]/L))*cos(M_PI*p[2]/L)) + 2*alpha_11*(C13_0*L*T*exp(t)*fabs(L) - C13_0*L*T_0*exp(t)*fabs(L)) + alpha_33*(C33_0*L*T*exp(t)*fabs(L) - C33_0*L*T_0*exp(t)*fabs(L)) - sqrt(t)*(0.5*M_PI*C33_0*sin(M_PI*p[0]/L)*sin(M_PI*p[1]/L)*sin(M_PI*p[2]/L)*fabs(L) + alpha_33*(0.5*C33_0*L*T*exp(t)*fabs(L) - 0.5*C33_0*L*T_0*exp(t)*fabs(L))) + (M_PI*C13_0*sin(M_PI*p[0]/L)*sin(M_PI*p[1]/L)*fabs(L) + M_PI*C13_0*sin(M_PI*p[0]/L)*cos(M_PI*p[1]/L)*fabs(L))*cos(M_PI*p[2]/L))*exp(-t)/(L*sigma_th*fabs(L)), m);
+      const double fadd = pow((1.0/40.0)*exp(-t)/(L*sigma_th), m)*(A*pow(-20/(pow(t, 3.0/2.0)*(3*sin(2*M_PI*p[0]/L)*sin(2*M_PI*p[2]/L)*cos(2*M_PI*p[1]/L) + 10) - 20), m)*(T_0 - T_end)*pow(-20*C13_0*(L*alpha_11*(T - T_0)*exp(t) + M_PI*sin(M_PI*p[0]/L)*sin(M_PI*p[1]/L)*cos(M_PI*p[2]/L)) - 20*C13_0*(L*alpha_11*(T - T_0)*exp(t) + M_PI*sin(M_PI*p[0]/L)*cos(M_PI*p[1]/L)*cos(M_PI*p[2]/L)) + C33_0*(pow(t, 3.0/2.0)*(3*sin(2*M_PI*p[0]/L)*sin(2*M_PI*p[2]/L)*cos(2*M_PI*p[1]/L) + 10) - 20)*(L*alpha_33*(T - T_0)*exp(t) + M_PI*sin(M_PI*p[0]/L)*sin(M_PI*p[1]/L)*sin(M_PI*p[2]/L)) - 20*L*sigma_th*exp(t) + fabs(20*C13_0*(L*alpha_11*(T - T_0)*exp(t) + M_PI*sin(M_PI*p[0]/L)*sin(M_PI*p[1]/L)*cos(M_PI*p[2]/L)) + 20*C13_0*(L*alpha_11*(T - T_0)*exp(t) + M_PI*sin(M_PI*p[0]/L)*cos(M_PI*p[1]/L)*cos(M_PI*p[2]/L)) - C33_0*(pow(t, 3.0/2.0)*(3*sin(2*M_PI*p[0]/L)*sin(2*M_PI*p[2]/L)*cos(2*M_PI*p[1]/L) + 10) - 20)*(L*alpha_33*(T - T_0)*exp(t) + M_PI*sin(M_PI*p[0]/L)*sin(M_PI*p[1]/L)*sin(M_PI*p[2]/L)) + 20*L*sigma_th*exp(t)), m) + (1.0/40.0)*sqrt(t)*pow(40*L*sigma_th*exp(t), m)*(-9*sin(2*M_PI*p[0]/L)*sin(2*M_PI*p[2]/L)*cos(2*M_PI*p[1]/L) - 30))/(T_0 - T_end);
       return fadd;
     };
 
@@ -988,14 +1047,35 @@ namespace StepCooling
   // defaultPart = curOmega - oldOmega - A * (actingStress/(1-curOmega))^m * tempInc, so
   // d(defaultPart)/d(curOmega) = 1 - A * m * tempInc * actingStress^m / (1-curOmega)^(m+1).
   template <int dim>
-  double ElasticProblem<dim>::mmsDerivativeKineticResidual(const SymmetricTensor<2,dim> &localStress, double curOmega, double tempInc)
+  double ElasticProblem<dim>::mmsDerivativeKineticResidual(const Point<dim> &p, double curOmega, double curT, double tempInc)
   {
     double stressThreshold = prm.get_double({"MaterialParameters", "DamageParameters"}, "StressThreshold");
     double A = prm.get_double({"MaterialParameters", "DamageParameters"}, "a_kineticParam");
     double m = prm.get_double({"MaterialParameters", "DamageParameters"}, "m_kineticParam");
-    double actingStress = localStress[dim-1][dim-1] - stressThreshold;
-    Assert(actingStress > 0, ExcMessage("acting stress is negative, this function should've not be called"));
-    return 1 - A * m * tempInc * std::pow(actingStress, m) / std::pow(1 - curOmega, m + 1);
+    double L = prm.get_double({"ModelParameters"}, "LengthOfTheBody");
+    double C33_0 = prm.get_double({"MaterialParameters", "LinearElasticityParameters"}, "C33_0");
+    double C13_0 = prm.get_double({"MaterialParameters", "LinearElasticityParameters"}, "C13_0");
+    double alpha_11 = prm.get_double({"MaterialParameters", "ThermoElasticParameters"}, "alpha11_0");
+    double alpha_33 = prm.get_double({"MaterialParameters", "ThermoElasticParameters"}, "alpha33_0");
+    double T_0 = prm.get_double({"ModelParameters"}, "InitialTemperature");
+    double T_end = prm.get_double({"ModelParameters"}, "FinalTemperature");
+    double T = curT;
+    double t = (T_0 - curT) / (T_0 - T_end);
+    // Same exact-stress construction as mmsKineticResidual's defaultPart, and for the same
+    // reason (see that function's comment) -- the exact stress does not depend on curOmega (it
+    // depends on the exact/manufactured omega(x,y,z,t), not the numerical iterate), so this
+    // derivative's structural form is unchanged from before, just with the exact stress in
+    // place of the real localStress. When actingStress clamps to 0, pow(0,m)=0 (m>0) so this
+    // naturally reduces to just 1 -- no special-casing needed.
+    const double omegaExact = 0.5*pow(t, 1.5)*(1 + 0.3*sin(2*M_PI*p[0]/L)*cos(2*M_PI*p[1]/L)*sin(2*M_PI*p[2]/L));
+    const double term1 = -alpha_11*(T - T_0) - M_PI*exp(-t)*sin(M_PI*p[0]/L)*sin(M_PI*p[1]/L)*cos(M_PI*p[2]/L)/L;
+    const double term2 = -alpha_11*(T - T_0) - M_PI*exp(-t)*sin(M_PI*p[0]/L)*cos(M_PI*p[1]/L)*cos(M_PI*p[2]/L)/L;
+    const double term3 = -alpha_33*(T - T_0) - M_PI*exp(-t)*sin(M_PI*p[0]/L)*sin(M_PI*p[1]/L)*sin(M_PI*p[2]/L)/L;
+    const double sigmaZZExact = C13_0*term1 + C13_0*term2 + C33_0*(1 - omegaExact)*term3;
+    double actingStress = std::max(sigmaZZExact - stressThreshold, 0.0);
+    // Matches defaultPart's now stressThreshold-normalized form: (actingStress/stressThreshold)^m
+    // in place of actingStress^m.
+    return 1 - A * m * tempInc * std::pow(actingStress / stressThreshold, m) / std::pow(1 - curOmega, m + 1);
   }
 
   template <int dim>
@@ -1256,6 +1336,38 @@ namespace StepCooling
     std::vector<Tensor<2, dim>> global_displacement_gradients(quadrature_formula.size());
     global_displacement_gradients.resize(quadrature_formula.size());
 
+    // Constants for the MMS kinetic-equation root search below -- pulled out of the per-point
+    // loop (previously re-read via prm.get_double() inside mmsKineticResidual/
+    // mmsDerivativeKineticResidual on every single call; "Predict damage increment" is the
+    // dominant cost in the timing report, so this also helps).
+    const double stressThreshold = prm.get_double({"MaterialParameters", "DamageParameters"}, "StressThreshold");
+    const double A_param = prm.get_double({"MaterialParameters", "DamageParameters"}, "a_kineticParam");
+    const double m_param = prm.get_double({"MaterialParameters", "DamageParameters"}, "m_kineticParam");
+    const double L_param = prm.get_double({"ModelParameters"}, "LengthOfTheBody");
+    const double C13_0p = prm.get_double({"MaterialParameters", "LinearElasticityParameters"}, "C13_0");
+    const double C33_0p = prm.get_double({"MaterialParameters", "LinearElasticityParameters"}, "C33_0");
+    const double alpha11p = prm.get_double({"MaterialParameters", "ThermoElasticParameters"}, "alpha11_0");
+    const double alpha33p = prm.get_double({"MaterialParameters", "ThermoElasticParameters"}, "alpha33_0");
+    const double T0p = prm.get_double({"ModelParameters"}, "InitialTemperature");
+    const double Tendp = prm.get_double({"ModelParameters"}, "FinalTemperature");
+    const double residualTolerance = prm.get_double({"SolverParameters"}, "KineticAlgebraicSolverTolerance");
+
+    // Exact/manufactured Macaulay-clamped acting stress at (p, curT) -- identical formula to the
+    // one duplicated inline in mmsKineticResidual/mmsDerivativeKineticResidual (kept untouched
+    // there, already verified; this is a separate, mechanically-extracted copy used only to
+    // choose the root-search bracket below, not to redefine the residual itself).
+    auto mmsExactActingStress = [&](const Point<dim> &p, double curT) -> double
+    {
+      const double T = curT;
+      const double t = (T0p - curT) / (T0p - Tendp);
+      const double omegaExact = 0.5*pow(t, 1.5)*(1 + 0.3*sin(2*M_PI*p[0]/L_param)*cos(2*M_PI*p[1]/L_param)*sin(2*M_PI*p[2]/L_param));
+      const double term1 = -alpha11p*(T - T0p) - M_PI*exp(-t)*sin(M_PI*p[0]/L_param)*sin(M_PI*p[1]/L_param)*cos(M_PI*p[2]/L_param)/L_param;
+      const double term2 = -alpha11p*(T - T0p) - M_PI*exp(-t)*sin(M_PI*p[0]/L_param)*cos(M_PI*p[1]/L_param)*cos(M_PI*p[2]/L_param)/L_param;
+      const double term3 = -alpha33p*(T - T0p) - M_PI*exp(-t)*sin(M_PI*p[0]/L_param)*sin(M_PI*p[1]/L_param)*sin(M_PI*p[2]/L_param)/L_param;
+      const double sigmaZZExact = C13_0p*term1 + C13_0p*term2 + C33_0p*(1 - omegaExact)*term3;
+      return std::max(sigmaZZExact - stressThreshold, 0.0);
+    };
+
     for (auto &cell : dof_handler.active_cell_iterators())
     {
       auto cell_damage = damageInQuadraturePoints.get_data(cell);
@@ -1271,34 +1383,126 @@ namespace StepCooling
         globalStrain = dealii::symmetrize(global_displacement_gradients[q]);
         localStrain = Physics::Transformations::basis_transformation(globalStrain, rotTensorGlobalToLocal);
         localStress = getLocalStressTensor(localStrain, cur_damage, curTemperature);
-        if (!checkActivationCriteria(localStress)) continue;
-
-        // Newton-Raphson (via boost, which falls back to bisection internally whenever a
-        // step would leave [min,max] or fails to make progress) starting from the current
-        // damage iterate. Replaces a fixed bracketing search: the Rabotnov-type kinetic
-        // equation's backward-Euler discretization can have two algebraic roots, and a
-        // bracket sized for the non-MMS equation's singularity-avoidance range ([omegaMax,
-        // 0.99], omegaMax close to 1) has no reason to contain the MMS-manufactured target
-        // root, which can sit anywhere in [old_damage, 1). Starting Newton from a nearby
-        // warm-started guess targets the physically-relevant root instead of whatever a
-        // fixed bracket happens to contain.
-        auto residualAndDerivative = [&](double omega) -> std::pair<double,double>
-        {
-          return {mmsKineticResidual(curQpoint, localStress, omega, old_damage, curTemperature, tempInc),
-                  mmsDerivativeKineticResidual(localStress, omega, tempInc)};
-        };
+        // No checkActivationCriteria gate here (deliberately, unlike a real physical run): for
+        // this MMS test, damage growth is driven by the manufactured kineticAddTerm (a function
+        // of the exact solution, always well-defined), not by whether the real/currently-
+        // converging numerical stress happens to cross threshold. Gating on the real stress
+        // creates a chicken-and-egg lock -- e.g. iteration 1 solves with zero damage (undamaged
+        // stiffness) while MmsBodyForce already assumes omega_exact(x,y,z,t)>0 for t>0, so if
+        // the real stress from that first, still-far-from-converged iterate never crosses
+        // threshold anywhere, damage would stay stuck at 0 forever and the mismatch would never
+        // resolve. mmsKineticResidual/mmsDerivativeKineticResidual are now Macaulay-clamped so
+        // they're well-defined regardless of whether the real, runtime localStress is active.
 
         const double lowerBound = old_damage;       // damage is non-decreasing within a load step
         const double upperBound = 0.999;             // stay clear of the (1-omega)->0 singularity
-        const double guess = std::clamp(cur_damage, lowerBound, upperBound);
-        const int digits = static_cast<int>(std::numeric_limits<double>::digits * 0.6); // boost's recommended default
-        boost::uintmax_t max_iter = 100;
-        const boost::uintmax_t iterCap = max_iter;
-        double newDamage = boost::math::tools::newton_raphson_iterate(
-          residualAndDerivative, guess, lowerBound, upperBound, digits, max_iter);
-        if (max_iter >= iterCap)
-          throw std::runtime_error("Newton iteration for the damage kinetic equation did not "
-                                    "converge within the iteration cap");
+        auto residualOnly = [&](double omega) -> double
+        {
+          return mmsKineticResidual(curQpoint, localStress, omega, old_damage, curTemperature, tempInc);
+        };
+
+        // Bracket-and-bisect, replacing raw Newton-Raphson (kept getting this equation wrong --
+        // see below). defaultPart's damage-accumulation term A*(actingStress/sigma_th)^m*tempInc*
+        // (1-omega)^-m is monotonically increasing and convex in omega whenever actingStress>0,
+        // which makes the full residual CONCAVE: its derivative crosses zero exactly once (an
+        // interior maximum), so there can be up to two algebraic roots in [lowerBound,
+        // upperBound] -- exactly the two-root behavior this function's Rabotnov-type kinetic
+        // equation is already known to have. Undamped Newton from an arbitrary warm-started guess
+        // is not reliable against a concave residual with a distant root: it can overshoot the
+        // interior maximum, or -- as reproduced empirically at p=(0.921,0.621,0.879), temperature
+        // step 2 -- start exactly at lowerBound (the guess is warm-started from the previous
+        // step's converged damage, which legitimately equals old_damage==lowerBound on every
+        // step's first call) with a Newton step that immediately wants to leave the bracket on
+        // the low side; boost::math::tools::newton_raphson_iterate's bound handling does not
+        // recover from that gracefully when the guess is already sitting exactly on the bound it
+        // would otherwise bisect against (it returned after 1 "iteration" with zero movement and
+        // residual=0.134, nowhere near the actual root at 0.508).
+        //
+        // Locate the interior maximum analytically instead of searching for it:
+        //   d/domega[A*(actingStress/sigma_th)^m*tempInc*(1-omega)^-m] = 1  at
+        //   omega_max = 1 - (m*A*(actingStress/sigma_th)^m*tempInc)^(1/(m+1))
+        // The physically meaningful root is the smaller one -- the branch continuously connected
+        // to (lowerBound, ~0) -- found on the rising part of the residual (omega <= omega_max)
+        // whenever a sign change exists there; only if it doesn't (residual already the same
+        // sign at both lowerBound and omega_max) do we fall back to the single root on the
+        // falling branch (omega_max, upperBound]. When actingStress==0 (Macaulay-clamped),
+        // defaultPart's damage term vanishes identically for all omega, the residual is exactly
+        // linear, and there is a unique root everywhere -- solved directly, no search needed.
+        const double actingStressAtPoint = mmsExactActingStress(curQpoint, curTemperature);
+        double newDamage;
+        bool rootBracketed = true;
+        bool kktClamped = false;
+        double lo = lowerBound, hi = upperBound;
+        if (actingStressAtPoint <= 0.0)
+        {
+          newDamage = std::clamp(old_damage - residualOnly(lowerBound), lowerBound, upperBound);
+        }
+        else
+        {
+          const double omega_max_raw =
+            1.0 - std::pow(m_param * A_param * std::pow(actingStressAtPoint / stressThreshold, m_param) * tempInc,
+                            1.0 / (m_param + 1.0));
+          const double residAtLower = residualOnly(lowerBound);
+          if (omega_max_raw <= lowerBound && residAtLower <= 0.0)
+          {
+            // Complementarity/KKT case for the non-decreasing-damage constraint, not a solver
+            // failure: the residual's unconstrained interior maximum sits AT or BELOW
+            // lowerBound, so it is monotonically non-increasing across the *entire* valid
+            // domain [lowerBound, upperBound] -- and even its best achievable value (at
+            // lowerBound) is already <= 0, i.e. the unconstrained equation wants to DECREASE
+            // damage, which "damage is non-decreasing within a load step" forbids. The correct
+            // constrained solution is exactly lowerBound (no growth this step); a nonzero
+            // residual there is expected and correct (it's the magnitude of the constraint
+            // force), not a sign of non-convergence. (Found while chasing what looked like
+            // convergence failures at several early-step points with small, stubbornly-negative
+            // residuals -- e.g. -0.0018 to -0.0083 -- that could never reach zero because no
+            // non-negative-growth root exists there at all: the true unconstrained root sits at
+            // a slightly negative, physically-inadmissible omega.)
+            newDamage = lowerBound;
+            kktClamped = true;
+          }
+          else
+          {
+            const double omega_max = std::clamp(omega_max_raw, lowerBound, upperBound);
+            const double residAtMax = residualOnly(omega_max);
+            if (omega_max > lowerBound && (residAtLower < 0.0) != (residAtMax < 0.0))
+            { lo = lowerBound; hi = omega_max; }
+            else if (omega_max < upperBound && (residAtMax < 0.0) != (residualOnly(upperBound) < 0.0))
+            { lo = omega_max; hi = upperBound; }
+            else
+              rootBracketed = false; // no sign change anywhere -- genuinely no root; let the
+                                      // residual check below report it with full diagnostics
+            if (rootBracketed)
+            {
+              // toms748_solve (superlinear, still bracket-guaranteed like bisection -- just
+              // converges much faster): bisecting on omega, not on the residual, so an
+              // x-tolerance equal to residualTolerance is not the same thing as a
+              // residual-tolerance (they differ by the local slope, which is large wherever
+              // (1-omega)^-m is steep); use a tight x-tolerance and let the residual-based check
+              // below be the real acceptance criterion.
+              boost::uintmax_t bisectIters = 200;
+              auto bracket = boost::math::tools::toms748_solve(residualOnly, lo, hi,
+                [](double a, double b) { return std::abs(b - a) < 1e-12; }, bisectIters);
+              newDamage = 0.5 * (bracket.first + bracket.second);
+            }
+            else
+              newDamage = lowerBound;
+          }
+        }
+
+        const double residualAtSolution = residualOnly(newDamage);
+        if (!kktClamped && (!rootBracketed || std::abs(residualAtSolution) > residualTolerance))
+          throw std::runtime_error("Kinetic equation root search did not find a converged root "
+                                    "(residual=" + std::to_string(residualAtSolution) +
+                                    ", rootBracketed=" + std::to_string(rootBracketed) +
+                                    ") at point " +
+                                    std::to_string(curQpoint[0]) + "," + std::to_string(curQpoint[1]) +
+                                    "," + std::to_string(curQpoint[2]) +
+                                    " [DEBUG old_damage=" + std::to_string(old_damage) +
+                                    " cur_damage=" + std::to_string(cur_damage) +
+                                    " newDamage=" + std::to_string(newDamage) +
+                                    " curTemperature=" + std::to_string(curTemperature) +
+                                    " tempInc=" + std::to_string(tempInc) + "]");
         cell_damage[q]->damage = newDamage;
       }
     }
@@ -1466,11 +1670,30 @@ namespace StepCooling
       unsigned int temperatureStepNumber = 0;
       do
       {
+        // Decrement BEFORE solving, not after: curT here is the state at t=0 (T0), which is
+        // the known initial condition, not something to solve for -- the standard hypothesis
+        // for this kind of problem. calculateSolutionTemperatureStep should evaluate the
+        // *new* (end-of-step) temperature for each step, matching genuine implicit
+        // (backward-Euler) semantics: the kinetic law's RHS is evaluated at the new state, not
+        // the old one. Getting this backwards meant step 1 always evaluated everything at
+        // t=0 exactly, including the damage kinetic law's manufactured forcing term, which is
+        // genuinely singular there for the sqrt(t)-based omega this test started with (infinite
+        // domega/dt at t=0; the current envelope is t^1.5, which has zero slope at t=0 and no
+        // singularity -- but the decrement-before-solving fix itself is general, correct
+        // regardless of which envelope is used, and was masked for a long time by two earlier
+        // bugs (checkActivationCriteria gating the kinetic-equation code path out entirely, and
+        // the domega/dT chain-rule bug) that never let this code path actually run at t=0 until
+        // both were fixed.
+        curT = curT - dT;
         temperatureStepNumber++;
         calculateSolutionTemperatureStep(curT, dT, refinementCycle, temperatureStepNumber);
         output_results(refinementCycle * 1000 + temperatureStepNumber);
-        curT = curT - dT;
-      } while (curT < Tend);
+        // Cooling process (T0 > Tend): keep stepping while curT is still above Tend. The old
+        // "curT < Tend" condition only ever matched this for dT == T0-Tend exactly (landing
+        // precisely on Tend after one step, where both conditions coincidentally agree) -- every
+        // test so far used exactly that dT, so a smaller dT silently truncated to 1 step
+        // regardless of what was configured. Genuine multi-step runs never actually worked.
+      } while (curT > Tend);
     }
 
     convergence_table.set_precision("L2", 3);
