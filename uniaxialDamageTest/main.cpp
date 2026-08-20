@@ -1449,6 +1449,7 @@ namespace StepCooling
     const std::string refinementStrategy = prm.get({"MeshRefinementParameters"}, "RefinementStrategy");
     const double fractionToRefine = prm.get_double({"MeshRefinementParameters"}, "FractionToRefine");
     const double fractionToCoarsen = prm.get_double({"MeshRefinementParameters"}, "FractionToCoarsen");
+    const unsigned int outputFrequency = prm.get_integer({"OutputParameters"}, "OutputFrequency");
 
     for (unsigned int refinementCycle = 0; refinementCycle < nRefinementCycles; ++refinementCycle)
     {
@@ -1465,34 +1466,45 @@ namespace StepCooling
       else
         refine_grid(fractionToRefine, fractionToCoarsen);
 
-      double curT = T0;
-      unsigned int temperatureStepNumber = 0;
-      do
+      // Step count computed up front, and curT derived as T0 - n*dT rather than accumulated by
+      // repeated subtraction. The previous `do { curT -= dT; } while (curT > Tend)` form had two
+      // problems: (a) rounding accumulated in curT, and (b) that accumulated error routinely left
+      // curT a few ulp above Tend after the nominal final step, triggering one EXTRA step that
+      // ran past the end temperature. Both are real: a step-size sweep over
+      // dT = 0.1/0.05/0.025/0.0125/0.00625 produced 11/20/40/81/161 steps instead of
+      // 10/20/40/80/160, so different step sizes silently simulated to different final states
+      // (dT=0.1 ended at pseudo-time 1.1, not 1.0) -- which invalidates any convergence study
+      // comparing them.
+      //
+      // A range not divisible by dT shortens the final step to land exactly on Tend rather than
+      // overshooting, and that shortened increment is what gets passed to the kinetic equation.
+      const double temperatureRange = T0 - Tend;
+      const unsigned int nTemperatureSteps =
+        static_cast<unsigned int>(std::ceil(temperatureRange / dT - 1e-9));
+      for (unsigned int temperatureStepNumber = 1;
+           temperatureStepNumber <= nTemperatureSteps;
+           ++temperatureStepNumber)
       {
-        // Decrement BEFORE solving, not after: curT here is the state at t=0 (T0), which is
-        // the known initial condition, not something to solve for -- the standard hypothesis
-        // for this kind of problem. calculateSolutionTemperatureStep should evaluate the
-        // *new* (end-of-step) temperature for each step, matching genuine implicit
-        // (backward-Euler) semantics: the kinetic law's RHS is evaluated at the new state, not
-        // the old one. Getting this backwards meant step 1 always evaluated everything at
-        // t=0 exactly, including the damage kinetic law's manufactured forcing term, which is
-        // genuinely singular there for the sqrt(t)-based omega this test started with (infinite
-        // domega/dt at t=0; the current envelope is t^1.5, which has zero slope at t=0 and no
-        // singularity -- but the decrement-before-solving fix itself is general, correct
-        // regardless of which envelope is used, and was masked for a long time by two earlier
-        // bugs (checkActivationCriteria gating the kinetic-equation code path out entirely, and
-        // the domega/dT chain-rule bug) that never let this code path actually run at t=0 until
-        // both were fixed.
-        curT = curT - dT;
-        temperatureStepNumber++;
-        calculateSolutionTemperatureStep(curT, dT, refinementCycle, temperatureStepNumber);
-        output_results(refinementCycle * 1000 + temperatureStepNumber);
-        // Cooling process (T0 > Tend): keep stepping while curT is still above Tend. The old
-        // "curT < Tend" condition only ever matched this for dT == T0-Tend exactly (landing
-        // precisely on Tend after one step, where both conditions coincidentally agree) -- every
-        // test so far used exactly that dT, so a smaller dT silently truncated to 1 step
-        // regardless of what was configured. Genuine multi-step runs never actually worked.
-      } while (curT > Tend);
+        // curT is the END-of-step temperature: the step is solved at the new state, not the old
+        // one, matching genuine implicit (backward-Euler) semantics -- the kinetic law's RHS
+        // belongs at the new state. T0 itself is the known initial condition and is never solved
+        // for. (Getting this backwards previously meant step 1 always evaluated everything at
+        // t=0, which was masked for a long time by two other bugs that kept the kinetic-equation
+        // path from running at all.)
+        const double prevT = std::max(T0 - (temperatureStepNumber - 1) * dT, Tend);
+        const double curT  = std::max(T0 - temperatureStepNumber * dT, Tend);
+        const double actualTempInc = prevT - curT;
+
+        calculateSolutionTemperatureStep(curT, actualTempInc, refinementCycle, temperatureStepNumber);
+
+        // OutputFrequency was declared and documented but never actually consulted -- every step
+        // wrote a full field dump regardless. That is a real cost for fine-step runs (e.g. the
+        // sweep above writes hundreds of ~450KB files nobody looks at). The final step is always
+        // written, whatever the frequency, so the end state is never missing.
+        if (temperatureStepNumber % outputFrequency == 0 ||
+            temperatureStepNumber == nTemperatureSteps)
+          output_results(refinementCycle * 1000 + temperatureStepNumber);
+      }
     }
 
     convergence_table.set_precision("epsZZ", 5);
