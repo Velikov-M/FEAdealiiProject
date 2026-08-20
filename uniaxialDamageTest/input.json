@@ -1,0 +1,261 @@
+{
+    "InputFiles": {
+        "CellToMaterialFile": {
+            "value": "groupFile",
+            "default_value": "cell_to_material.txt",
+            "documentation": "Input file that maps each cell to a material ID",
+            "pattern": "29",
+            "pattern_description": "[Anything]"
+        },
+        "MeshFile": {
+            "value": "cube10cellsPerSide.msh",
+            "default_value": "mesh.msh",
+            "documentation": "Input mesh file in .msh format",
+            "pattern": "28",
+            "pattern_description": "[Anything]"
+        },
+        "OrientationFile": {
+            "value": "notUsedHere.txt",
+            "default_value": "orientation.txt",
+            "documentation": "Input file that provides orientation matrices for each cell",
+            "pattern": "30",
+            "pattern_description": "[Anything]"
+        }
+    },
+    "MaterialParameters": {
+        "DamageParameters": {
+            "StressThreshold": {
+                "value": "200e6",
+                "default_value": "200e6",
+                "documentation": "Stress threshold for damage activation",
+                "pattern": "13",
+                "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
+            },
+            "a_kineticParam": {
+                "value": "4.0",
+                "default_value": "1e-5",
+                "documentation": "Kinetic parameter a in the kinetic equation",
+                "pattern": "14",
+                "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
+            },
+            "m_kineticParam": {
+                "value": "2",
+                "default_value": "2",
+                "documentation": "Kinetic parameter m in the kinetic equation",
+                "pattern": "15",
+                "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
+            }
+        },
+        "LinearElasticityParameters": {
+            "C11_0": {
+                "value": "1060e9",
+                "default_value": "1060e9",
+                "documentation": "Elasticity tensor component C11 at reference temperature",
+                "pattern": "3",
+                "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
+            },
+            "C11_functionOfTemperature": {
+                "value": "1.0",
+                "default_value": "1.0",
+                "documentation": "Function of temperature for elasticity tensor component C11",
+                "pattern": "4",
+                "pattern_description": "[Anything]"
+            },
+            "C12_0": {
+                "value": "180e9",
+                "default_value": "180e9",
+                "documentation": "Elasticity tensor component C12 at reference temperature",
+                "pattern": "9",
+                "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
+            },
+            "C12_functionOfTemperature": {
+                "value": "1.0",
+                "default_value": "1.0",
+                "documentation": "Function of temperature for elasticity tensor component C12",
+                "pattern": "10",
+                "pattern_description": "[Anything]"
+            },
+            "C13_0": {
+                "value": "15e9",
+                "default_value": "15e9",
+                "documentation": "Elasticity tensor component C13 at reference temperature",
+                "pattern": "11",
+                "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
+            },
+            "C13_functionOfTemperature": {
+                "value": "1.0",
+                "default_value": "1.0",
+                "documentation": "Function of temperature for elasticity tensor component C13",
+                "pattern": "12",
+                "pattern_description": "[Anything]"
+            },
+            "C33_0": {
+                "value": "36.5e9",
+                "default_value": "36.5e9",
+                "documentation": "Elasticity tensor component C33 at reference temperature",
+                "pattern": "5",
+                "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
+            },
+            "C33_functionOfTemperature": {
+                "value": "1.0",
+                "default_value": "1.0",
+                "documentation": "Function of temperature for elasticity tensor component C33",
+                "pattern": "6",
+                "pattern_description": "[Anything]"
+            },
+            "C44_0": {
+                "value": "0.25e9",
+                "default_value": "0.25e9",
+                "documentation": "Elasticity tensor component C44 at reference temperature",
+                "pattern": "7",
+                "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
+            },
+            "C44_functionOfTemperature": {
+                "value": "1.0",
+                "default_value": "1.0",
+                "documentation": "Function of temperature for elasticity tensor component C44",
+                "pattern": "8",
+                "pattern_description": "[Anything]"
+            }
+        },
+        "ThermoElasticParameters": {
+            "alpha11_0": {
+                "value": "0",
+                "default_value": "1e-5",
+                "documentation": "Thermal expansion coefficient at a-axis direction",
+                "pattern": "16",
+                "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
+            },
+            "alpha11_functionOfTemperature": {
+                "value": "1.0",
+                "default_value": "1.0",
+                "documentation": "Function of temperature for thermal expansion coefficient at a-axis direction",
+                "pattern": "17",
+                "pattern_description": "[Anything]"
+            },
+            "alpha33_0": {
+                "value": "0",
+                "default_value": "1e-8",
+                "documentation": "Thermal expansion coefficient at c-axis direction",
+                "pattern": "18",
+                "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
+            },
+            "alpha33_functionOfTemperature": {
+                "value": "1.0",
+                "default_value": "1.0",
+                "documentation": "Function of temperature for thermal expansion coefficient at c-axis direction",
+                "pattern": "19",
+                "pattern_description": "[Anything]"
+            }
+        }
+    },
+    "MeshRefinementParameters": {
+        "NumberOfRefinementCycles": {
+            "value": "1"
+        },
+        "RefinementStrategy": {
+            "value": "uniform"
+        },
+        "FractionToRefine": {
+            "value": "0.3"
+        },
+        "FractionToCoarsen": {
+            "value": "0.03"
+        }
+    },
+    "ModelParameters": {
+        "InitialTemperature": {
+            "value": "1",
+            "default_value": "2000",
+            "documentation": "Initial temperature of the body",
+            "pattern": "0",
+            "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
+        },
+        "LengthOfTheBody": {
+            "value": "1",
+            "default_value": "1",
+            "documentation": "Length of the body in meters",
+            "pattern": "2",
+            "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
+        },
+        "TemperatureIncrement": {
+            "value": "0.05",
+            "default_value": "100",
+            "documentation": "Temperature increment for each step",
+            "pattern": "1",
+            "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
+        },
+        "FinalTemperature": {
+            "value": "0",
+            "default_value": "500",
+            "documentation": "Temperature at the end of cooling process",
+            "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
+        },
+        "AppliedAxialStrainRate": {
+            "value": "0.02",
+            "default_value": "0.02",
+            "documentation": "dEpsilonZZ per unit pseudo-time (see main.cpp header)",
+            "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
+        }
+    },
+    "OutputParameters": {
+        "OutputDirectory": {
+            "value": "output",
+            "default_value": "output",
+            "documentation": "Directory to store output files",
+            "pattern": "25",
+            "pattern_description": "[DirectoryName]"
+        },
+        "OutputFileNamePrefix": {
+            "value": "solution",
+            "default_value": "solution",
+            "documentation": "Prefix for output file names",
+            "pattern": "26",
+            "pattern_description": "[Anything]"
+        },
+        "OutputFrequency": {
+            "value": "10",
+            "default_value": "10",
+            "documentation": "Frequency of output (in terms of number of steps)",
+            "pattern": "27",
+            "pattern_description": "[Integer range 1...2147483647 (inclusive)]"
+        }
+    },
+    "SolverParameters": {
+        "DamageIncrementRelativeTolerance": {
+            "value": "1e-5",
+            "default_value": "1e-5",
+            "documentation": "Relative tolerance for damage increment in in displacement-damage iteration",
+            "pattern": "22",
+            "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
+        },
+        "DisplacementIncrementRelativeTolerance": {
+            "value": "1e-5",
+            "default_value": "1e-5",
+            "documentation": "Relative tolerance for displacement increment in in displacement-damage iteration",
+            "pattern": "21",
+            "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
+        },
+        "ForceEqulibriumRelativeTolerance": {
+            "value": "1e-4",
+            "default_value": "1e-4",
+            "documentation": "Relative tolerance for force equilibrium residiual in displacement-damage iteration",
+            "pattern": "20",
+            "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
+        },
+        "KineticAlgebraicSolverTolerance": {
+            "value": "1e-4",
+            "default_value": "1e-4",
+            "documentation": "Relative tolerance of iterative algebraic solver for kinetic equation",
+            "pattern": "24",
+            "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
+        },
+        "MaxNumberOfIterations": {
+            "value": "100",
+            "default_value": "100",
+            "documentation": "Maximum number of iterations for displacement-damage iteration",
+            "pattern": "23",
+            "pattern_description": "[Integer range 1...2147483647 (inclusive)]"
+        }
+    }
+}
