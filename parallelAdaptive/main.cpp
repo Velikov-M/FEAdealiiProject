@@ -256,6 +256,59 @@ namespace StepCooling
     this->curT = curT;
   }
 
+  // The manufactured/exact damage field omega(x,y,z,t) = 0.5*t^1.5*(1 +
+  // 0.3*sin(2*pi*x/L)*cos(2*pi*y/L)*sin(2*pi*z/L)) -- see myNotebook.ipynb cells 5 and 19. Single
+  // source of truth for this formula: it used to be duplicated inline (with real risk of the
+  // copies drifting out of sync) in mmsKineticResidual, mmsDerivativeKineticResidual, the
+  // mmsExactActingStress lambda in predict_damage_tempInc_external_solver, and now also in
+  // process_solution's damage-error reporting -- consolidated here, mirroring how
+  // PreciseDisplacementSolution is the single source of truth for the exact displacement field.
+  template <int dim>
+  class PreciseDamageSolution : public Function<dim>
+  {
+    public:
+      PreciseDamageSolution();
+      virtual double value(const Point<dim> &p, unsigned int component = 0) const override;
+
+      void set_prm_consts(const ParameterHandler &prm);
+      void set_current_temperature(const double curT);
+
+    private:
+      double L, T_0, T_end, curT;
+  };
+
+  template <int dim>
+  PreciseDamageSolution<dim>::PreciseDamageSolution()
+    : Function<dim>(1)
+  {
+    this->L = 0.0;
+    this->T_0 = 0.0;
+    this->T_end = 0.0;
+    this->curT = 0.0;
+  }
+
+  template <int dim>
+  double PreciseDamageSolution<dim>::value(const Point<dim> &p, unsigned int /*component*/) const
+  {
+    Assert(dim == 3, ExcNotImplemented());
+    const double t = (T_0 - curT) / (T_0 - T_end);
+    return 0.5*std::pow(t, 1.5)*(1 + 0.3*sin(M_PI*2*p[0]/L)*cos(M_PI*2*p[1]/L)*sin(M_PI*2*p[2]/L));
+  }
+
+  template <int dim>
+  void PreciseDamageSolution<dim>::set_prm_consts(const ParameterHandler &prm)
+  {
+    this->L = prm.get_double({"ModelParameters"}, "LengthOfTheBody");
+    this->T_0 = prm.get_double({"ModelParameters"}, "InitialTemperature");
+    this->T_end = prm.get_double({"ModelParameters"}, "FinalTemperature");
+  }
+
+  template <int dim>
+  void PreciseDamageSolution<dim>::set_current_temperature(const double curT)
+  {
+    this->curT = curT;
+  }
+
   template <int dim>
   class MmsBodyForce : public Function<dim>
   {
@@ -786,13 +839,26 @@ namespace StepCooling
     void calculateSolutionTemperatureStep(double curT, double dT, unsigned int refinementCycle, int temperatureStepNumber);
     void refine_grid(double fractionToRefine, double fractionToCoarse);
     void output_results(const unsigned int cycle = 1) const;
-    void process_solution(unsigned int refinementCycle, const unsigned int tempStepNum, const unsigned int iterSolverStepNum);
+    void process_solution(unsigned int refinementCycle, const unsigned int tempStepNum, const unsigned int iterSolverStepNum, double curT);
     void parse_cellToMaterial_data(std::string fileName);
 
     bool checkActivationCriteria(SymmetricTensor<2,dim> localStress);
+    // Plain per-point value snapshot, NOT a copy of the CellDataStorage object itself:
+    // CellDataStorage's implicit copy constructor/assignment only deep-copies its
+    // std::map<CellId, std::vector<std::shared_ptr<DataType>>> -- the shared_ptrs inside are
+    // copied (refcounted), not the DamageQData objects they point to. So
+    // `CellDataStorage<...> a = b;` leaves `a` and `b` aliasing the SAME underlying damage
+    // objects: mutating one through get_data() mutates both. Found via maxDamageInc always
+    // printing exactly 0 in checkConvergenceCriteria's output -- confirmed against deal.II's
+    // quadrature_point_data.h, which declares no custom copy ctor/assignment for
+    // CellDataStorage, so the compiler-generated member-wise copy (shallow on the shared_ptrs)
+    // is what actually runs. A real "previous iteration" snapshot needs the scalar values
+    // copied out into independent storage instead -- see snapshotDamage().
+    using DamageSnapshot = std::map<typename Triangulation<dim>::cell_iterator, std::vector<double>>;
+    DamageSnapshot snapshotDamage();
     bool checkConvergenceCriteria(double curT,
                                     const Vector<double> &oldSolDisplacement,
-                                    const CellDataStorage<typename Triangulation<dim>::cell_iterator, DamageQData> &oldDamageInQuadraturePoints);
+                                    const DamageSnapshot &oldDamageSnapshot);
 
     //double solve_kinetic_equation(SymmetricTensor<2,dim> localStress, double old_damage, double tempInc);
     double kineticResidual(SymmetricTensor<2,dim> localStress, double curOmega, double oldOmega, double tempInc);
@@ -834,6 +900,7 @@ namespace StepCooling
     TimerOutput timer;
 
     PreciseDisplacementSolution<dim> preciseSolution;
+    PreciseDamageSolution<dim> preciseDamageSolution;
     ConvergenceTable convergence_table;
 
   };
@@ -995,7 +1062,8 @@ namespace StepCooling
     // (unlike before) it does not need Macaulay-clamping against a runtime-varying quantity --
     // it's Macaulay-clamped once, from the same fixed exact-solution evaluation as
     // kineticAddTerm.
-    const double omegaExact = 0.5*pow(t, 1.5)*(1 + 0.3*sin(2*M_PI*p[0]/L)*cos(2*M_PI*p[1]/L)*sin(2*M_PI*p[2]/L));
+    preciseDamageSolution.set_current_temperature(curT);
+    const double omegaExact = preciseDamageSolution.value(p);
     const double term1 = -alpha_11*(T - T_0) - M_PI*exp(-t)*sin(M_PI*p[0]/L)*sin(M_PI*p[1]/L)*cos(M_PI*p[2]/L)/L;
     const double term2 = -alpha_11*(T - T_0) - M_PI*exp(-t)*sin(M_PI*p[0]/L)*cos(M_PI*p[1]/L)*cos(M_PI*p[2]/L)/L;
     const double term3 = -alpha_33*(T - T_0) - M_PI*exp(-t)*sin(M_PI*p[0]/L)*sin(M_PI*p[1]/L)*sin(M_PI*p[2]/L)/L;
@@ -1067,7 +1135,8 @@ namespace StepCooling
     // derivative's structural form is unchanged from before, just with the exact stress in
     // place of the real localStress. When actingStress clamps to 0, pow(0,m)=0 (m>0) so this
     // naturally reduces to just 1 -- no special-casing needed.
-    const double omegaExact = 0.5*pow(t, 1.5)*(1 + 0.3*sin(2*M_PI*p[0]/L)*cos(2*M_PI*p[1]/L)*sin(2*M_PI*p[2]/L));
+    preciseDamageSolution.set_current_temperature(curT);
+    const double omegaExact = preciseDamageSolution.value(p);
     const double term1 = -alpha_11*(T - T_0) - M_PI*exp(-t)*sin(M_PI*p[0]/L)*sin(M_PI*p[1]/L)*cos(M_PI*p[2]/L)/L;
     const double term2 = -alpha_11*(T - T_0) - M_PI*exp(-t)*sin(M_PI*p[0]/L)*cos(M_PI*p[1]/L)*cos(M_PI*p[2]/L)/L;
     const double term3 = -alpha_33*(T - T_0) - M_PI*exp(-t)*sin(M_PI*p[0]/L)*sin(M_PI*p[1]/L)*sin(M_PI*p[2]/L)/L;
@@ -1087,6 +1156,7 @@ namespace StepCooling
     elasticityTensor.setFromPrm(prm);
     cteTensor.setFromPrm(prm);
     preciseSolution.set_prm_consts(prm);
+    preciseDamageSolution.set_prm_consts(prm);
     TimerOutput::Scope timer_section(timer, "Setup of system");
     const QGauss<dim> quadrature_formula( fe.degree + 1);
     const unsigned int n_q_points    = quadrature_formula.size();
@@ -1168,6 +1238,7 @@ namespace StepCooling
     constraints.clear();
     DoFTools::make_hanging_node_constraints(dof_handler, constraints);
     preciseSolution.set_current_temperature(curTemperature);
+    preciseDamageSolution.set_current_temperature(curTemperature);
     auto prescribed_displacement = MmsBoundaryDisplacementFunction<dim>(preciseSolution);
     VectorTools::interpolate_boundary_values(dof_handler,
                                              types::boundary_id(0),
@@ -1336,10 +1407,8 @@ namespace StepCooling
     std::vector<Tensor<2, dim>> global_displacement_gradients(quadrature_formula.size());
     global_displacement_gradients.resize(quadrature_formula.size());
 
-    // Constants for the MMS kinetic-equation root search below -- pulled out of the per-point
-    // loop (previously re-read via prm.get_double() inside mmsKineticResidual/
-    // mmsDerivativeKineticResidual on every single call; "Predict damage increment" is the
-    // dominant cost in the timing report, so this also helps).
+    // Kinetic-equation constants, read once rather than per quadrature point (this loop is the
+    // dominant cost in the timing report).
     const double stressThreshold = prm.get_double({"MaterialParameters", "DamageParameters"}, "StressThreshold");
     const double A_param = prm.get_double({"MaterialParameters", "DamageParameters"}, "a_kineticParam");
     const double m_param = prm.get_double({"MaterialParameters", "DamageParameters"}, "m_kineticParam");
@@ -1352,15 +1421,15 @@ namespace StepCooling
     const double Tendp = prm.get_double({"ModelParameters"}, "FinalTemperature");
     const double residualTolerance = prm.get_double({"SolverParameters"}, "KineticAlgebraicSolverTolerance");
 
-    // Exact/manufactured Macaulay-clamped acting stress at (p, curT) -- identical formula to the
-    // one duplicated inline in mmsKineticResidual/mmsDerivativeKineticResidual (kept untouched
-    // there, already verified; this is a separate, mechanically-extracted copy used only to
-    // choose the root-search bracket below, not to redefine the residual itself).
+    // Exact/manufactured Macaulay-clamped acting stress at (p, curT). Same formula as the one
+    // inside mmsKineticResidual/mmsDerivativeKineticResidual; duplicated here only to pick the
+    // root-search bracket below, not to redefine the residual itself.
     auto mmsExactActingStress = [&](const Point<dim> &p, double curT) -> double
     {
       const double T = curT;
       const double t = (T0p - curT) / (T0p - Tendp);
-      const double omegaExact = 0.5*pow(t, 1.5)*(1 + 0.3*sin(2*M_PI*p[0]/L_param)*cos(2*M_PI*p[1]/L_param)*sin(2*M_PI*p[2]/L_param));
+      preciseDamageSolution.set_current_temperature(curT);
+      const double omegaExact = preciseDamageSolution.value(p);
       const double term1 = -alpha11p*(T - T0p) - M_PI*exp(-t)*sin(M_PI*p[0]/L_param)*sin(M_PI*p[1]/L_param)*cos(M_PI*p[2]/L_param)/L_param;
       const double term2 = -alpha11p*(T - T0p) - M_PI*exp(-t)*sin(M_PI*p[0]/L_param)*cos(M_PI*p[1]/L_param)*cos(M_PI*p[2]/L_param)/L_param;
       const double term3 = -alpha33p*(T - T0p) - M_PI*exp(-t)*sin(M_PI*p[0]/L_param)*sin(M_PI*p[1]/L_param)*sin(M_PI*p[2]/L_param)/L_param;
@@ -1383,129 +1452,89 @@ namespace StepCooling
         globalStrain = dealii::symmetrize(global_displacement_gradients[q]);
         localStrain = Physics::Transformations::basis_transformation(globalStrain, rotTensorGlobalToLocal);
         localStress = getLocalStressTensor(localStrain, cur_damage, curTemperature);
-        // No checkActivationCriteria gate here (deliberately, unlike a real physical run): for
-        // this MMS test, damage growth is driven by the manufactured kineticAddTerm (a function
-        // of the exact solution, always well-defined), not by whether the real/currently-
-        // converging numerical stress happens to cross threshold. Gating on the real stress
-        // creates a chicken-and-egg lock -- e.g. iteration 1 solves with zero damage (undamaged
-        // stiffness) while MmsBodyForce already assumes omega_exact(x,y,z,t)>0 for t>0, so if
-        // the real stress from that first, still-far-from-converged iterate never crosses
-        // threshold anywhere, damage would stay stuck at 0 forever and the mismatch would never
-        // resolve. mmsKineticResidual/mmsDerivativeKineticResidual are now Macaulay-clamped so
-        // they're well-defined regardless of whether the real, runtime localStress is active.
 
-        const double lowerBound = old_damage;       // damage is non-decreasing within a load step
-        const double upperBound = 0.999;             // stay clear of the (1-omega)->0 singularity
+        // No checkActivationCriteria gate here, unlike a real run: MMS damage growth is driven
+        // by the manufactured kineticAddTerm regardless of whether the real, still-converging
+        // stress crosses threshold -- gating on it would lock iteration 1 (undamaged stiffness)
+        // out of ever activating. mmsKineticResidual is Macaulay-safe on its own.
+        const double lowerBound = old_damage; // damage is non-decreasing within a load step
+        const double upperBound = 0.999;      // stay clear of the (1-omega)->0 singularity
         auto residualOnly = [&](double omega) -> double
         {
           return mmsKineticResidual(curQpoint, localStress, omega, old_damage, curTemperature, tempInc);
         };
 
-        // Bracket-and-bisect, replacing raw Newton-Raphson (kept getting this equation wrong --
-        // see below). defaultPart's damage-accumulation term A*(actingStress/sigma_th)^m*tempInc*
-        // (1-omega)^-m is monotonically increasing and convex in omega whenever actingStress>0,
-        // which makes the full residual CONCAVE: its derivative crosses zero exactly once (an
-        // interior maximum), so there can be up to two algebraic roots in [lowerBound,
-        // upperBound] -- exactly the two-root behavior this function's Rabotnov-type kinetic
-        // equation is already known to have. Undamped Newton from an arbitrary warm-started guess
-        // is not reliable against a concave residual with a distant root: it can overshoot the
-        // interior maximum, or -- as reproduced empirically at p=(0.921,0.621,0.879), temperature
-        // step 2 -- start exactly at lowerBound (the guess is warm-started from the previous
-        // step's converged damage, which legitimately equals old_damage==lowerBound on every
-        // step's first call) with a Newton step that immediately wants to leave the bracket on
-        // the low side; boost::math::tools::newton_raphson_iterate's bound handling does not
-        // recover from that gracefully when the guess is already sitting exactly on the bound it
-        // would otherwise bisect against (it returned after 1 "iteration" with zero movement and
-        // residual=0.134, nowhere near the actual root at 0.508).
-        //
-        // Locate the interior maximum analytically instead of searching for it:
-        //   d/domega[A*(actingStress/sigma_th)^m*tempInc*(1-omega)^-m] = 1  at
-        //   omega_max = 1 - (m*A*(actingStress/sigma_th)^m*tempInc)^(1/(m+1))
-        // The physically meaningful root is the smaller one -- the branch continuously connected
-        // to (lowerBound, ~0) -- found on the rising part of the residual (omega <= omega_max)
-        // whenever a sign change exists there; only if it doesn't (residual already the same
-        // sign at both lowerBound and omega_max) do we fall back to the single root on the
-        // falling branch (omega_max, upperBound]. When actingStress==0 (Macaulay-clamped),
-        // defaultPart's damage term vanishes identically for all omega, the residual is exactly
-        // linear, and there is a unique root everywhere -- solved directly, no search needed.
+        // defaultPart's damage term A*(ratio)^m*(1-omega)^-m is convex in omega whenever
+        // actingStress>0, making the full residual CONCAVE (single interior maximum, up to two
+        // roots) -- not safe for raw Newton from an arbitrary guess. Locate the maximum
+        // analytically instead of searching for it (d(residual)/domega = 0 there):
+        //   omega_max = 1 - (m*A*ratio^m*tempInc)^(1/(m+1))
+        // then bracket-and-solve on whichever side of it actually contains a sign change,
+        // preferring the smaller root (continuous with old_damage) when both do. When
+        // actingStress==0 (Macaulay-clamped) the damage term vanishes identically and the
+        // residual is exactly linear, with a unique closed-form root.
         const double actingStressAtPoint = mmsExactActingStress(curQpoint, curTemperature);
-        double newDamage;
+        double newDamage, lo = lowerBound, hi = upperBound;
         bool rootBracketed = true;
-        bool kktClamped = false;
-        double lo = lowerBound, hi = upperBound;
+        boost::uintmax_t bisectItersUsed = 0;
+
         if (actingStressAtPoint <= 0.0)
         {
-          newDamage = std::clamp(old_damage - residualOnly(lowerBound), lowerBound, upperBound);
+          newDamage = std::clamp(old_damage - residualOnly(old_damage), lowerBound, upperBound);
         }
         else
         {
-          const double omega_max_raw =
+          const double omega_max = std::clamp(
             1.0 - std::pow(m_param * A_param * std::pow(actingStressAtPoint / stressThreshold, m_param) * tempInc,
-                            1.0 / (m_param + 1.0));
+                            1.0 / (m_param + 1.0)),
+            lowerBound, upperBound);
           const double residAtLower = residualOnly(lowerBound);
-          if (omega_max_raw <= lowerBound && residAtLower <= 0.0)
+          const double residAtMax = residualOnly(omega_max);
+          if (omega_max > lowerBound && (residAtLower < 0.0) != (residAtMax < 0.0))
+          { lo = lowerBound; hi = omega_max; }
+          else if (omega_max < upperBound && (residAtMax < 0.0) != (residualOnly(upperBound) < 0.0))
+          { lo = omega_max; hi = upperBound; }
+          else
+            rootBracketed = false; // no sign change anywhere -- no root exists in [lowerBound, upperBound]
+
+          if (rootBracketed)
           {
-            // Complementarity/KKT case for the non-decreasing-damage constraint, not a solver
-            // failure: the residual's unconstrained interior maximum sits AT or BELOW
-            // lowerBound, so it is monotonically non-increasing across the *entire* valid
-            // domain [lowerBound, upperBound] -- and even its best achievable value (at
-            // lowerBound) is already <= 0, i.e. the unconstrained equation wants to DECREASE
-            // damage, which "damage is non-decreasing within a load step" forbids. The correct
-            // constrained solution is exactly lowerBound (no growth this step); a nonzero
-            // residual there is expected and correct (it's the magnitude of the constraint
-            // force), not a sign of non-convergence. (Found while chasing what looked like
-            // convergence failures at several early-step points with small, stubbornly-negative
-            // residuals -- e.g. -0.0018 to -0.0083 -- that could never reach zero because no
-            // non-negative-growth root exists there at all: the true unconstrained root sits at
-            // a slightly negative, physically-inadmissible omega.)
-            newDamage = lowerBound;
-            kktClamped = true;
+            // toms748_solve: bracket-guaranteed, superlinear. Tight x-tolerance here -- an
+            // x-tolerance equal to residualTolerance isn't the same thing as a residual
+            // tolerance near the (1-omega)^-m singularity, so the residual check below is the
+            // real acceptance criterion.
+            boost::uintmax_t bisectIters = 200;
+            auto bracket = boost::math::tools::toms748_solve(residualOnly, lo, hi,
+              [](double a, double b) { return std::abs(b - a) < 1e-12; }, bisectIters);
+            bisectItersUsed = bisectIters;
+            newDamage = 0.5 * (bracket.first + bracket.second);
           }
           else
-          {
-            const double omega_max = std::clamp(omega_max_raw, lowerBound, upperBound);
-            const double residAtMax = residualOnly(omega_max);
-            if (omega_max > lowerBound && (residAtLower < 0.0) != (residAtMax < 0.0))
-            { lo = lowerBound; hi = omega_max; }
-            else if (omega_max < upperBound && (residAtMax < 0.0) != (residualOnly(upperBound) < 0.0))
-            { lo = omega_max; hi = upperBound; }
-            else
-              rootBracketed = false; // no sign change anywhere -- genuinely no root; let the
-                                      // residual check below report it with full diagnostics
-            if (rootBracketed)
-            {
-              // toms748_solve (superlinear, still bracket-guaranteed like bisection -- just
-              // converges much faster): bisecting on omega, not on the residual, so an
-              // x-tolerance equal to residualTolerance is not the same thing as a
-              // residual-tolerance (they differ by the local slope, which is large wherever
-              // (1-omega)^-m is steep); use a tight x-tolerance and let the residual-based check
-              // below be the real acceptance criterion.
-              boost::uintmax_t bisectIters = 200;
-              auto bracket = boost::math::tools::toms748_solve(residualOnly, lo, hi,
-                [](double a, double b) { return std::abs(b - a) < 1e-12; }, bisectIters);
-              newDamage = 0.5 * (bracket.first + bracket.second);
-            }
-            else
-              newDamage = lowerBound;
-          }
+            newDamage = lowerBound;
         }
 
         const double residualAtSolution = residualOnly(newDamage);
-        if (!kktClamped && (!rootBracketed || std::abs(residualAtSolution) > residualTolerance))
-          throw std::runtime_error("Kinetic equation root search did not find a converged root "
-                                    "(residual=" + std::to_string(residualAtSolution) +
+        if (!rootBracketed || std::abs(residualAtSolution) > residualTolerance)
+          throw std::runtime_error("Kinetic equation root search did not converge (residual=" +
+                                    std::to_string(residualAtSolution) +
                                     ", rootBracketed=" + std::to_string(rootBracketed) +
                                     ") at point " +
                                     std::to_string(curQpoint[0]) + "," + std::to_string(curQpoint[1]) +
                                     "," + std::to_string(curQpoint[2]) +
-                                    " [DEBUG old_damage=" + std::to_string(old_damage) +
-                                    " cur_damage=" + std::to_string(cur_damage) +
+                                    " [old_damage=" + std::to_string(old_damage) +
                                     " newDamage=" + std::to_string(newDamage) +
-                                    " curTemperature=" + std::to_string(curTemperature) +
-                                    " tempInc=" + std::to_string(tempInc) + "]");
+                                    " T=" + std::to_string(curTemperature) +
+                                    " tempInc=" + std::to_string(tempInc) +
+                                    " actingStress=" + std::to_string(actingStressAtPoint) +
+                                    " bracket=[" + std::to_string(lo) + "," + std::to_string(hi) + "]" +
+                                    " residAtBracket=[" + std::to_string(residualOnly(lo)) + "," +
+                                    std::to_string(residualOnly(hi)) + "]" +
+                                    " bisectItersUsed=" + std::to_string(bisectItersUsed) + "]");
         cell_damage[q]->damage = newDamage;
       }
     }
+    // Damage-vs-omega_exact deviation is tracked in process_solution() and reported as
+    // convergence_table columns each iteration.
   }
 
   // template <int dim>
@@ -1699,17 +1728,23 @@ namespace StepCooling
     convergence_table.set_precision("L2", 3);
     convergence_table.set_precision("H1", 3);
     convergence_table.set_precision("Linfty", 3);
- 
+    convergence_table.set_precision("damageL2", 3);
+    convergence_table.set_precision("damageLinfty", 3);
+
     convergence_table.set_scientific("L2", true);
     convergence_table.set_scientific("H1", true);
     convergence_table.set_scientific("Linfty", true);
- 
+    convergence_table.set_scientific("damageL2", true);
+    convergence_table.set_scientific("damageLinfty", true);
+
     convergence_table.set_tex_caption("cells", "\\# cells");
     convergence_table.set_tex_caption("dofs", "\\# dofs");
     convergence_table.set_tex_caption("L2", "@f$L^2@f$-error");
     convergence_table.set_tex_caption("H1", "@f$H^1@f$-error");
     convergence_table.set_tex_caption("Linfty", "@f$L^\\infty@f$-error");
- 
+    convergence_table.set_tex_caption("damageL2", "damage @f$L^2@f$-error");
+    convergence_table.set_tex_caption("damageLinfty", "damage @f$L^\\infty@f$-error");
+
     convergence_table.set_tex_format("cells", "r");
     convergence_table.set_tex_format("dofs", "r");
  
@@ -1726,8 +1761,7 @@ namespace StepCooling
     // On iteration 1, prev* is still the end-of-previous-temperature-step state, which
     // is the correct reference point for that first increment.
     Vector<double> prevSolDisplacement = solDisplacement;
-    CellDataStorage<typename Triangulation<dim>::cell_iterator,
-                DamageQData> prevDamageInQuadraturePoints = damageInQuadraturePoints;
+    DamageSnapshot prevDamageSnapshot = snapshotDamage();
     const unsigned int maxIterations = prm.get_integer({"SolverParameters"}, "MaxNumberOfIterations");
     unsigned int dispDamageIterationNumber = 0;
     bool converged = false;
@@ -1737,12 +1771,12 @@ namespace StepCooling
       assemble_system(curT);
       solve();
       predict_damage_tempInc_external_solver(curT, dT);
-      process_solution(refinementCycle, temperatureStepNumber, dispDamageIterationNumber);
+      process_solution(refinementCycle, temperatureStepNumber, dispDamageIterationNumber, curT);
 
-      converged = checkConvergenceCriteria(curT, prevSolDisplacement, prevDamageInQuadraturePoints);
+      converged = checkConvergenceCriteria(curT, prevSolDisplacement, prevDamageSnapshot);
 
       prevSolDisplacement = solDisplacement;
-      prevDamageInQuadraturePoints = damageInQuadraturePoints;
+      prevDamageSnapshot = snapshotDamage();
 
       if (!converged && dispDamageIterationNumber >= maxIterations)
         throw std::runtime_error("Displacement-damage iteration did not converge within "
@@ -1767,9 +1801,25 @@ namespace StepCooling
   }
 
   template <int dim>
+  typename ElasticProblem<dim>::DamageSnapshot ElasticProblem<dim>::snapshotDamage()
+  {
+    const QGauss<dim> quadrature_formula(fe.degree + 1);
+    DamageSnapshot snapshot;
+    for (const auto &cell : dof_handler.active_cell_iterators())
+    {
+      auto cell_damage = damageInQuadraturePoints.get_data(cell);
+      std::vector<double> values(quadrature_formula.size());
+      for (unsigned int q = 0; q < quadrature_formula.size(); ++q)
+        values[q] = cell_damage[q]->damage;
+      snapshot[cell] = std::move(values);
+    }
+    return snapshot;
+  }
+
+  template <int dim>
   bool ElasticProblem<dim>::checkConvergenceCriteria(double curT,
                                     const Vector<double> &oldSolDisplacement,
-                                    const CellDataStorage<typename Triangulation<dim>::cell_iterator, DamageQData> &oldDamageInQuadraturePoints)
+                                    const DamageSnapshot &oldDamageSnapshot)
   {
     const QGauss<dim> quadrature_formula(fe.degree + 1);
     Vector<double> solutionIncrement = solDisplacement;
@@ -1782,10 +1832,10 @@ namespace StepCooling
     for (const auto &cell : dof_handler.active_cell_iterators())
     {
       auto cell_damage = damageInQuadraturePoints.get_data(cell);
-      auto old_cell_damage = oldDamageInQuadraturePoints.get_data(cell);
+      const auto &old_cell_damage = oldDamageSnapshot.at(cell);
       for (unsigned int q = 0; q < quadrature_formula.size(); ++q)
       {
-        double damageIncrement = cell_damage[q]->damage - old_cell_damage[q]->damage;
+        double damageIncrement = cell_damage[q]->damage - old_cell_damage[q];
         maxDamageIncrement = std::max(maxDamageIncrement, std::abs(damageIncrement));
       }
     }
@@ -1821,7 +1871,7 @@ namespace StepCooling
   }
 
   template <int dim>
-  void ElasticProblem<dim>::process_solution(unsigned int refinementCycle, const unsigned int tempStepNum, const unsigned int iterSolverStepNum)
+  void ElasticProblem<dim>::process_solution(unsigned int refinementCycle, const unsigned int tempStepNum, const unsigned int iterSolverStepNum, double curT)
   {
     Vector<float> difference_per_cell(triangulation.n_active_cells());
     VectorTools::integrate_difference(dof_handler,
@@ -1859,21 +1909,53 @@ namespace StepCooling
                                         difference_per_cell,
                                         VectorTools::Linfty_norm);
  
+    // Damage-vs-manufactured-omega_exact comparison, mirroring the displacement L2/Linfty errors
+    // above but computed manually: damage lives at quadrature points via CellDataStorage, not a
+    // DoFHandler field VectorTools can integrate against directly. Uses preciseDamageSolution
+    // (the single source of truth for the omega_exact formula) rather than a fresh inline copy.
+    // Replaces the ad-hoc [DIAGNOSTIC] stdout dump that used to live in
+    // predict_damage_tempInc_external_solver.
+    double damageL2ErrorSquared = 0.0, damageLinftyError = 0.0;
+    {
+      preciseDamageSolution.set_current_temperature(curT);
+      const QGauss<dim> quadrature_formula(fe.degree + 1);
+      FEValues<dim> fe_values(fe, quadrature_formula, update_quadrature_points | update_JxW_values);
+      for (const auto &cell : dof_handler.active_cell_iterators())
+      {
+        fe_values.reinit(cell);
+        auto cell_damage = damageInQuadraturePoints.get_data(cell);
+        const auto &qPoints = fe_values.get_quadrature_points();
+        for (unsigned int q = 0; q < quadrature_formula.size(); ++q)
+        {
+          const double err = cell_damage[q]->damage - preciseDamageSolution.value(qPoints[q]);
+          damageL2ErrorSquared += err*err*fe_values.JxW(q);
+          damageLinftyError = std::max(damageLinftyError, std::abs(err));
+        }
+      }
+    }
+    const double damageL2Error = std::sqrt(damageL2ErrorSquared);
+
     const unsigned int n_active_cells = triangulation.n_active_cells();
     const unsigned int n_dofs         = dof_handler.n_dofs();
- 
+
     std::cout << "Refinement cycle " << refinementCycle << ", temperature step number " << tempStepNum
               << ", displacement-iterative solution step number " << iterSolverStepNum << ':' << std::endl
               << "   Number of active cells:       " << n_active_cells
               << std::endl
-              << "   Number of degrees of freedom: " << n_dofs << std::endl;
+              << "   Number of degrees of freedom: " << n_dofs << std::endl
+              << "   Damage error vs. omega_exact: L2=" << damageL2Error
+              << ", Linfty=" << damageLinftyError << std::endl;
 
     convergence_table.add_value("cycle", refinementCycle);
+    convergence_table.add_value("tempStep", tempStepNum);
+    convergence_table.add_value("iter", iterSolverStepNum);
     convergence_table.add_value("cells", n_active_cells);
     convergence_table.add_value("dofs", n_dofs);
     convergence_table.add_value("L2", L2_error);
     convergence_table.add_value("H1", H1_error);
     convergence_table.add_value("Linfty", Linfty_error);
+    convergence_table.add_value("damageL2", damageL2Error);
+    convergence_table.add_value("damageLinfty", damageLinftyError);
   }
 
 } // namespace StepCooling
