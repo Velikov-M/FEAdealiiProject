@@ -385,6 +385,20 @@ namespace StepCooling
                         "1e-4",
                         Patterns::Double(0),
                         "Relative tolerance of iterative algebraic solver for kinetic equation");
+
+      // Was hardcoded at 1e-6 in solve(). That is a fine engineering default, but it is far too
+      // loose for verification: the algebraic stress-damage consistency check in
+      // process_solution() bottomed out at ~1.4e-3*StressThreshold and was measuring the LINEAR
+      // SOLVER, not the coupling. Tightening to 1e-12 drops that residual by eight orders of
+      // magnitude, to ~2e-11*StressThreshold (i.e. round-off), which is what makes the check a
+      // real verification of the coupling algebra. Left configurable because tight tolerances
+      // cost CG iterations and will not be wanted for every production run -- and because the
+      // upcoming refined/perturbed problems are more ill-conditioned, where demanding 1e-12
+      // within the iteration cap may not be achievable.
+      prm.declare_entry("LinearSolverTolerance",
+                        "1e-6",
+                        Patterns::Double(0),
+                        "Relative tolerance (vs |rhs|) for the CG linear solve");
     }
     prm.leave_subsection();
     prm.enter_subsection("MeshRefinementParameters");
@@ -1081,7 +1095,8 @@ namespace StepCooling
   void ElasticProblem<dim>::solve()
   {
     TimerOutput::Scope timer_section(timer, "Solve system");
-    SolverControl            solver_control(1000, 1e-6 * system_rhs.l2_norm());
+    const double linearSolverTolerance = prm.get_double({"SolverParameters"}, "LinearSolverTolerance");
+    SolverControl            solver_control(1000, linearSolverTolerance * system_rhs.l2_norm());
     SolverCG<Vector<double>> cg(solver_control);
 
     PreconditionSSOR<SparseMatrix<double>> preconditioner;
