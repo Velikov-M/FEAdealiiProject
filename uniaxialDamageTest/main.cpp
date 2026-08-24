@@ -47,6 +47,8 @@
 #include <deal.II/base/symmetric_tensor.h>
 #include <deal.II/base/convergence_table.h>
 #include <deal.II/base/parameter_handler.h>
+#include <deal.II/base/work_stream.h>
+#include <deal.II/base/multithread_info.h>
 
 #include <deal.II/lac/vector.h>
 #include <deal.II/lac/full_matrix.h>
@@ -401,6 +403,23 @@ namespace StepCooling
                         "Relative tolerance (vs |rhs|) for the CG linear solve");
     }
     prm.leave_subsection();
+    prm.enter_subsection("ParallelizationParameters");
+    {
+      // Shared-memory threading only (WorkStream/TBB). No MPI, no distributed triangulation, no
+      // vector/matrix type changes -- that is a separate, later step.
+      prm.declare_entry("UseWorkStream",
+                        "true",
+                        Patterns::Bool(),
+                        "Assemble and predict damage via WorkStream::run (multi-threaded). When "
+                        "false, the original single-threaded loops are used instead -- kept as a "
+                        "reference implementation for A/B correctness and timing comparison.");
+
+      prm.declare_entry("NumberOfThreads",
+                        "0",
+                        Patterns::Integer(0),
+                        "Thread cap for WorkStream. 0 means let deal.II use all available cores.");
+    }
+    prm.leave_subsection();
     prm.enter_subsection("MeshRefinementParameters");
     {
       prm.declare_entry("NumberOfRefinementCycles",
@@ -613,6 +632,75 @@ namespace StepCooling
     return cteTensor; // inference of damage on thermal expansion is not considered in current implementation, but it can be added if needed
   }
 
+  // WorkStream scratch/copy data. ScratchData is per-thread working memory (reused across the
+  // cells that thread handles); CopyData carries one cell's result to the serialized copier.
+  // Both need a copy constructor because WorkStream clones the prototype once per thread, and
+  // FEValues is not copyable -- hence the reconstruct-from-fe/quadrature/flags idiom used here
+  // (the same pattern deal.II's own step-32 uses).
+  namespace AssemblyScratch
+  {
+    template <int dim>
+    struct Scratch
+    {
+      Scratch(const FiniteElement<dim> &fe, const Quadrature<dim> &quadrature,
+              const UpdateFlags flags)
+        : fe_values(fe, quadrature, flags)
+        , globalElasticTensor_q(quadrature.size())
+        , JxW_q(quadrature.size())
+        , shapeGradSymm(fe.n_dofs_per_cell(),
+                        std::vector<SymmetricTensor<2, dim>>(quadrature.size()))
+      {}
+
+      Scratch(const Scratch &s)
+        : fe_values(s.fe_values.get_fe(), s.fe_values.get_quadrature(),
+                    s.fe_values.get_update_flags())
+        , globalElasticTensor_q(s.globalElasticTensor_q.size())
+        , JxW_q(s.JxW_q.size())
+        , shapeGradSymm(s.shapeGradSymm)
+      {}
+
+      FEValues<dim> fe_values;
+      std::vector<SymmetricTensor<4, dim>> globalElasticTensor_q;
+      std::vector<double> JxW_q;
+      std::vector<std::vector<SymmetricTensor<2, dim>>> shapeGradSymm;
+    };
+
+    struct Copy
+    {
+      FullMatrix<double> cell_matrix;
+      Vector<double> cell_rhs;
+      std::vector<types::global_dof_index> local_dof_indices;
+    };
+  } // namespace AssemblyScratch
+
+  namespace DamageScratch
+  {
+    template <int dim>
+    struct Scratch
+    {
+      Scratch(const FiniteElement<dim> &fe, const Quadrature<dim> &quadrature,
+              const UpdateFlags flags)
+        : fe_values(fe, quadrature, flags)
+        , global_displacement_gradients(quadrature.size())
+      {}
+
+      Scratch(const Scratch &s)
+        : fe_values(s.fe_values.get_fe(), s.fe_values.get_quadrature(),
+                    s.fe_values.get_update_flags())
+        , global_displacement_gradients(s.global_displacement_gradients.size())
+      {}
+
+      FEValues<dim> fe_values;
+      std::vector<Tensor<2, dim>> global_displacement_gradients;
+    };
+
+    // Empty: the damage update writes only into the current cell's own quadrature-point data,
+    // which no other cell touches, so there is nothing to hand to a serialized copier.
+    // WorkStream still requires the type to exist.
+    struct Copy
+    {};
+  } // namespace DamageScratch
+
   template <int dim>
   class ElasticProblem
   {
@@ -627,10 +715,34 @@ namespace StepCooling
   private:
 
     void setup_system();
+    // Public entry points dispatch to a serial or a WorkStream implementation based on
+    // ParallelizationParameters/UseWorkStream. The serial versions are kept deliberately (not
+    // as dead code): they are the reference for A/B correctness checking and for measuring the
+    // actual speedup, and a threading bug is much easier to localize with a known-good path to
+    // diff against.
+    // assemble_system() does the setup common to both paths (constraints, zeroing) and then
+    // dispatches the CELL LOOP to one of these two.
     void assemble_system(double curTemperature);
+    void assemble_cells_serial(double curTemperature);
+    void assemble_cells_workstream(double curTemperature);
     void solve();
     //void predict_damage_tempInc(double curTemperature, double tempInc);
     void predict_damage_tempInc_external_solver(double curTemperature, double tempInc);
+    void predict_damage_cells_serial(double curTemperature, double tempInc,
+                                      double stressThreshold, double A_param, double m_param,
+                                      double residualTolerance);
+    void predict_damage_cells_workstream(double curTemperature, double tempInc,
+                                          double stressThreshold, double A_param, double m_param,
+                                          double residualTolerance);
+    // Per-quadrature-point damage update, shared verbatim by both paths above so the two cannot
+    // drift apart. Writes only to this cell's own quadrature data, which is what makes the
+    // threaded version safe without a copier.
+    void update_damage_on_cell(
+      const typename DoFHandler<dim>::active_cell_iterator &cell,
+      FEValues<dim> &fe_values,
+      std::vector<Tensor<2, dim>> &global_displacement_gradients,
+      double curTemperature, double tempInc,
+      double stressThreshold, double A_param, double m_param, double residualTolerance);
     void calculateSolutionTemperatureStep(double curT, double dT, unsigned int refinementCycle, int temperatureStepNumber);
     void refine_grid(double fractionToRefine, double fractionToCoarse);
     void output_results(const unsigned int cycle = 1) const;
@@ -971,37 +1083,6 @@ namespace StepCooling
 
     double T0 = prm.get_double({"ModelParameters"}, "InitialTemperature");
 
-    const QGauss<dim> quadrature_formula(fe.degree + 1);
-    const unsigned int dofs_per_cell = fe.n_dofs_per_cell();
-    FEValues<dim> fe_values(fe, quadrature_formula,
-    update_values | update_gradients | update_quadrature_points | update_JxW_values);
-
-    const unsigned int n_q_points = quadrature_formula.size();
-
-    FullMatrix<double> cell_matrix(dofs_per_cell, dofs_per_cell);
-    Vector<double> cell_rhs(dofs_per_cell);
-    SymmetricTensor<4,dim> localElasticTensor;
-    SymmetricTensor<2,dim> localcteTensor;
-    SymmetricTensor<2,dim> globalcteTensor;
-    Tensor<2,dim> rotTensorGlobalToLocal;
-    Tensor<2,dim> rotTensorLocalToGlobal;
-
-    // Per-(cell, q) data that does NOT depend on the (i, j) test/trial function
-    // indices: hoisted out of the i,j loop below and evaluated once per q instead of
-    // dofs_per_cell^2 (stiffness) / dofs_per_cell (rhs) times per q. This was the
-    // dominant cost of assembly -- a rank-4 tensor rotation + Kelvin-notation
-    // conversion, previously recomputed dofs_per_cell^2 = 576x more often than needed
-    // for the *same* (cell, q, damage). Still fully point-dependent (per q, inside the
-    // per-cell loop), so a future per-material/per-point elasticity lookup keyed on
-    // cell/q plugs in the same way it would today.
-    std::vector<SymmetricTensor<4,dim>> globalElasticTensor_q(n_q_points);
-    std::vector<double> JxW_q(n_q_points);
-    // Symmetrized shape function gradients also don't depend on j when used as the
-    // "i" operand (or on i when used as the "j" operand) -- precompute per (dof, q)
-    // once and reuse for both roles instead of recomputing dofs_per_cell times over.
-    std::vector<std::vector<SymmetricTensor<2,dim>>> shapeGradSymm(
-      dofs_per_cell, std::vector<SymmetricTensor<2,dim>>(n_q_points));
-
     constraints.clear();
     DoFTools::make_hanging_node_constraints(dof_handler, constraints);
     appliedDisplacement.set_current_temperature(curTemperature);
@@ -1042,28 +1123,58 @@ namespace StepCooling
     system_matrix = 0;
     system_rhs    = 0;
 
+    if (prm.get_bool({"ParallelizationParameters"}, "UseWorkStream"))
+      assemble_cells_workstream(curTemperature);
+    else
+      assemble_cells_serial(curTemperature);
+  }
+
+  // Reference single-threaded cell loop. Kept as the correctness/timing baseline for the
+  // WorkStream version below -- the two must produce bit-identical matrices.
+  template <int dim>
+  void ElasticProblem<dim>::assemble_cells_serial(double curTemperature)
+  {
+    const double T0 = prm.get_double({"ModelParameters"}, "InitialTemperature");
+    const QGauss<dim> quadrature_formula(fe.degree + 1);
+    const unsigned int dofs_per_cell = fe.n_dofs_per_cell();
+    const unsigned int n_q_points = quadrature_formula.size();
+    FEValues<dim> fe_values(fe, quadrature_formula,
+      update_values | update_gradients | update_quadrature_points | update_JxW_values);
+
+    FullMatrix<double> cell_matrix(dofs_per_cell, dofs_per_cell);
+    Vector<double> cell_rhs(dofs_per_cell);
     std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
+
+    // Per-(cell, q) data that does NOT depend on the (i, j) test/trial function indices:
+    // hoisted out of the i,j loop and evaluated once per q instead of dofs_per_cell^2
+    // (stiffness) / dofs_per_cell (rhs) times per q -- a rank-4 tensor rotation is expensive
+    // enough that this was the dominant assembly cost before.
+    std::vector<SymmetricTensor<4,dim>> globalElasticTensor_q(n_q_points);
+    std::vector<double> JxW_q(n_q_points);
+    std::vector<std::vector<SymmetricTensor<2,dim>>> shapeGradSymm(
+      dofs_per_cell, std::vector<SymmetricTensor<2,dim>>(n_q_points));
 
     for (const auto &cell : dof_handler.active_cell_iterators())
     {
       fe_values.reinit(cell);
       auto cell_damage = damageInQuadraturePoints.get_data(cell);
-      rotTensorGlobalToLocal = getRotTensorGlobalToLocal(cell->material_id());
-      rotTensorLocalToGlobal = transpose(rotTensorGlobalToLocal);
+      const Tensor<2,dim> rotTensorGlobalToLocal = getRotTensorGlobalToLocal(cell->material_id());
+      const Tensor<2,dim> rotTensorLocalToGlobal = transpose(rotTensorGlobalToLocal);
 
       cell_matrix = 0;
       cell_rhs    = 0;
 
-      // cte tensor currently depends only on curTemperature and cell orientation
-      // (neither varies with q or i/j), so it is computed once per cell.
-      localcteTensor = cteTensor.getcteTensor(curTemperature);
-      globalcteTensor = Physics::Transformations::basis_transformation(localcteTensor, rotTensorLocalToGlobal);
+      const SymmetricTensor<2,dim> localcteTensor = cteTensor.getcteTensor(curTemperature);
+      const SymmetricTensor<2,dim> globalcteTensor =
+        Physics::Transformations::basis_transformation(localcteTensor, rotTensorLocalToGlobal);
 
       for (const unsigned int q : fe_values.quadrature_point_indices())
       {
         JxW_q[q] = fe_values.JxW(q);
-        localElasticTensor = elasticityTensor.getElasticityTensor(cell_damage[q]->damage, curTemperature);
-        globalElasticTensor_q[q] = Physics::Transformations::basis_transformation(localElasticTensor, rotTensorLocalToGlobal);
+        const SymmetricTensor<4,dim> localElasticTensor =
+          elasticityTensor.getElasticityTensor(cell_damage[q]->damage, curTemperature);
+        globalElasticTensor_q[q] =
+          Physics::Transformations::basis_transformation(localElasticTensor, rotTensorLocalToGlobal);
       }
 
       for (const unsigned int i : fe_values.dof_indices())
@@ -1073,22 +1184,91 @@ namespace StepCooling
       for (const unsigned int i : fe_values.dof_indices())
       {
         for (const unsigned int j : fe_values.dof_indices())
-        {
           for (const unsigned int q : fe_values.quadrature_point_indices())
-          {
-            cell_matrix(i, j) += (shapeGradSymm[i][q] * (globalElasticTensor_q[q] * shapeGradSymm[j][q])) * JxW_q[q];
-          }
-        }
+            cell_matrix(i, j) +=
+              (shapeGradSymm[i][q] * (globalElasticTensor_q[q] * shapeGradSymm[j][q])) * JxW_q[q];
+
+        // Thermal term retained for structural compatibility; CTE is 0 in this test's
+        // input.json, so it contributes nothing. No body-force term (see assemble_system).
         for (const unsigned int q : fe_values.quadrature_point_indices())
-        {
-          // Thermal term retained for structural compatibility; CTE is 0 in this test's
-          // input.json, so it contributes nothing. No body-force term (see above).
-          cell_rhs(i) += ((shapeGradSymm[i][q] * (globalElasticTensor_q[q] * globalcteTensor)) * (curTemperature - T0)) * JxW_q[q];
-        }
+          cell_rhs(i) +=
+            ((shapeGradSymm[i][q] * (globalElasticTensor_q[q] * globalcteTensor)) * (curTemperature - T0)) * JxW_q[q];
       }
       cell->get_dof_indices(local_dof_indices);
       constraints.distribute_local_to_global(cell_matrix, cell_rhs, local_dof_indices, system_matrix, system_rhs);
     }
+  }
+
+  // Multi-threaded cell loop. The worker is pure per-cell work writing only into its own
+  // CopyData; the copier -- which touches the shared system_matrix/system_rhs -- is run
+  // serialized by WorkStream, so no explicit locking is needed.
+  template <int dim>
+  void ElasticProblem<dim>::assemble_cells_workstream(double curTemperature)
+  {
+    const double T0 = prm.get_double({"ModelParameters"}, "InitialTemperature");
+    const QGauss<dim> quadrature_formula(fe.degree + 1);
+    const unsigned int dofs_per_cell = fe.n_dofs_per_cell();
+    const UpdateFlags flags =
+      update_values | update_gradients | update_quadrature_points | update_JxW_values;
+
+    auto worker = [&](const typename DoFHandler<dim>::active_cell_iterator &cell,
+                      AssemblyScratch::Scratch<dim> &scratch,
+                      AssemblyScratch::Copy &copy)
+    {
+      FEValues<dim> &fe_values = scratch.fe_values;
+      fe_values.reinit(cell);
+      auto cell_damage = damageInQuadraturePoints.get_data(cell);
+      const Tensor<2,dim> rotTensorGlobalToLocal = getRotTensorGlobalToLocal(cell->material_id());
+      const Tensor<2,dim> rotTensorLocalToGlobal = transpose(rotTensorGlobalToLocal);
+
+      copy.cell_matrix.reinit(dofs_per_cell, dofs_per_cell);
+      copy.cell_rhs.reinit(dofs_per_cell);
+      copy.local_dof_indices.resize(dofs_per_cell);
+      copy.cell_matrix = 0;
+      copy.cell_rhs    = 0;
+
+      const SymmetricTensor<2,dim> localcteTensor = cteTensor.getcteTensor(curTemperature);
+      const SymmetricTensor<2,dim> globalcteTensor =
+        Physics::Transformations::basis_transformation(localcteTensor, rotTensorLocalToGlobal);
+
+      for (const unsigned int q : fe_values.quadrature_point_indices())
+      {
+        scratch.JxW_q[q] = fe_values.JxW(q);
+        const SymmetricTensor<4,dim> localElasticTensor =
+          elasticityTensor.getElasticityTensor(cell_damage[q]->damage, curTemperature);
+        scratch.globalElasticTensor_q[q] =
+          Physics::Transformations::basis_transformation(localElasticTensor, rotTensorLocalToGlobal);
+      }
+
+      for (const unsigned int i : fe_values.dof_indices())
+        for (const unsigned int q : fe_values.quadrature_point_indices())
+          scratch.shapeGradSymm[i][q] = symmetrize(fe_values[displacement].gradient(i, q));
+
+      for (const unsigned int i : fe_values.dof_indices())
+      {
+        for (const unsigned int j : fe_values.dof_indices())
+          for (const unsigned int q : fe_values.quadrature_point_indices())
+            copy.cell_matrix(i, j) +=
+              (scratch.shapeGradSymm[i][q] *
+               (scratch.globalElasticTensor_q[q] * scratch.shapeGradSymm[j][q])) * scratch.JxW_q[q];
+
+        for (const unsigned int q : fe_values.quadrature_point_indices())
+          copy.cell_rhs(i) +=
+            ((scratch.shapeGradSymm[i][q] * (scratch.globalElasticTensor_q[q] * globalcteTensor)) *
+             (curTemperature - T0)) * scratch.JxW_q[q];
+      }
+      cell->get_dof_indices(copy.local_dof_indices);
+    };
+
+    auto copier = [&](const AssemblyScratch::Copy &copy)
+    {
+      constraints.distribute_local_to_global(copy.cell_matrix, copy.cell_rhs,
+                                             copy.local_dof_indices, system_matrix, system_rhs);
+    };
+
+    WorkStream::run(dof_handler.begin_active(), dof_handler.end(), worker, copier,
+                    AssemblyScratch::Scratch<dim>(fe, quadrature_formula, flags),
+                    AssemblyScratch::Copy());
   }
 
   template <int dim>
@@ -1182,37 +1362,56 @@ namespace StepCooling
   {
     TimerOutput::Scope timer_section(timer, "Predict damage increment");
 
-    SymmetricTensor<2, dim> globalStrain;
-    SymmetricTensor<2, dim> localStrain;
-    SymmetricTensor<2, dim> localStress;
-
-    QGauss<dim> quadrature_formula(fe.degree + 1);
-    FEValues<dim> fe_values(fe, quadrature_formula,
-                            update_values | update_gradients | update_quadrature_points);
-    const unsigned int n_q_points = quadrature_formula.size();
-    Tensor<2,dim> rotTensorGlobalToLocal;
-    std::vector<Tensor<2, dim>> global_displacement_gradients(quadrature_formula.size());
-    global_displacement_gradients.resize(quadrature_formula.size());
-
     // Kinetic-equation constants, read once rather than per quadrature point (this loop is the
-    // dominant cost in the timing report).
+    // dominant cost in the timing report), then passed down to the per-cell worker.
     const double stressThreshold = prm.get_double({"MaterialParameters", "DamageParameters"}, "StressThreshold");
     const double A_param = prm.get_double({"MaterialParameters", "DamageParameters"}, "a_kineticParam");
     const double m_param = prm.get_double({"MaterialParameters", "DamageParameters"}, "m_kineticParam");
     const double residualTolerance = prm.get_double({"SolverParameters"}, "KineticAlgebraicSolverTolerance");
 
-    for (auto &cell : dof_handler.active_cell_iterators())
+    if (prm.get_bool({"ParallelizationParameters"}, "UseWorkStream"))
+      predict_damage_cells_workstream(curTemperature, tempInc, stressThreshold, A_param,
+                                       m_param, residualTolerance);
+    else
+      predict_damage_cells_serial(curTemperature, tempInc, stressThreshold, A_param,
+                                   m_param, residualTolerance);
+    // Damage-vs-reference deviation is tracked in process_solution() and reported as
+    // convergence_table columns each iteration.
+  }
+
+  // The per-cell damage update, shared verbatim by the serial and threaded paths so they cannot
+  // drift apart. Writes only into this cell's own quadrature-point data -- no other cell reads or
+  // writes it -- which is what makes the threaded version safe with no copier and no locking.
+  // (damageInQuadraturePoints::get_data() is a const map lookup here; concurrent lookups are safe
+  // because nothing inserts during the loop.)
+  template <int dim>
+  void ElasticProblem<dim>::update_damage_on_cell(
+    const typename DoFHandler<dim>::active_cell_iterator &cell,
+    FEValues<dim> &fe_values,
+    std::vector<Tensor<2, dim>> &global_displacement_gradients,
+    double curTemperature, double tempInc,
+    double stressThreshold, double A_param, double m_param, double residualTolerance)
+  {
+    SymmetricTensor<2, dim> globalStrain;
+    SymmetricTensor<2, dim> localStrain;
+    SymmetricTensor<2, dim> localStress;
+
+    auto cell_damage = damageInQuadraturePoints.get_data(cell);
+    const Tensor<2, dim> rotTensorGlobalToLocal = getRotTensorGlobalToLocal(cell->material_id());
+    fe_values.reinit(cell);
+    const auto &qPoints = fe_values.get_quadrature_points();
+    const unsigned int n_q_points = fe_values.get_quadrature().size();
+
+    // One call fills the gradients at ALL quadrature points. This used to sit inside the q loop
+    // below, so every point's gradients were recomputed n_q_points (=8) times over -- pure
+    // redundant work, identical results.
+    fe_values[displacement].get_function_gradients(solDisplacement, global_displacement_gradients);
+
+    for (unsigned int q = 0; q < n_q_points; q++)
     {
-      auto cell_damage = damageInQuadraturePoints.get_data(cell);
-      rotTensorGlobalToLocal = getRotTensorGlobalToLocal(cell->material_id());
-      fe_values.reinit(cell);
-      auto qPoints = fe_values.get_quadrature_points();
-      for (unsigned int q = 0; q < n_q_points; q++)
-      {
         Point<dim> curQpoint = qPoints[q];
         double old_damage = cell_damage[q]->old_damage;
         double cur_damage = cell_damage[q]->damage;
-        fe_values[displacement].get_function_gradients(solDisplacement, global_displacement_gradients);
         globalStrain = dealii::symmetrize(global_displacement_gradients[q]);
         localStrain = Physics::Transformations::basis_transformation(globalStrain, rotTensorGlobalToLocal);
         localStress = getLocalStressTensor(localStrain, cur_damage, curTemperature);
@@ -1310,10 +1509,51 @@ namespace StepCooling
                                     std::to_string(residualOnly(hi)) + "]" +
                                     " bisectItersUsed=" + std::to_string(bisectItersUsed) + "]");
         cell_damage[q]->damage = newDamage;
-      }
     }
-    // Damage-vs-omega_exact deviation is tracked in process_solution() and reported as
-    // convergence_table columns each iteration.
+  }
+
+  // Reference single-threaded loop, kept as the correctness/timing baseline.
+  template <int dim>
+  void ElasticProblem<dim>::predict_damage_cells_serial(
+    double curTemperature, double tempInc,
+    double stressThreshold, double A_param, double m_param, double residualTolerance)
+  {
+    const QGauss<dim> quadrature_formula(fe.degree + 1);
+    FEValues<dim> fe_values(fe, quadrature_formula,
+                            update_values | update_gradients | update_quadrature_points);
+    std::vector<Tensor<2, dim>> global_displacement_gradients(quadrature_formula.size());
+
+    for (const auto &cell : dof_handler.active_cell_iterators())
+      update_damage_on_cell(cell, fe_values, global_displacement_gradients, curTemperature,
+                            tempInc, stressThreshold, A_param, m_param, residualTolerance);
+  }
+
+  // Multi-threaded loop. No copier is needed (see update_damage_on_cell): each cell owns its
+  // quadrature data outright. Note that update_damage_on_cell can throw when the root search
+  // fails; WorkStream propagates exceptions out of the worker, so that diagnostic still surfaces
+  // rather than being swallowed -- though with several cells in flight the failing cell is not
+  // necessarily the first one that would have failed serially.
+  template <int dim>
+  void ElasticProblem<dim>::predict_damage_cells_workstream(
+    double curTemperature, double tempInc,
+    double stressThreshold, double A_param, double m_param, double residualTolerance)
+  {
+    const QGauss<dim> quadrature_formula(fe.degree + 1);
+    const UpdateFlags flags = update_values | update_gradients | update_quadrature_points;
+
+    auto worker = [&](const typename DoFHandler<dim>::active_cell_iterator &cell,
+                      DamageScratch::Scratch<dim> &scratch,
+                      DamageScratch::Copy &)
+    {
+      update_damage_on_cell(cell, scratch.fe_values, scratch.global_displacement_gradients,
+                            curTemperature, tempInc, stressThreshold, A_param, m_param,
+                            residualTolerance);
+    };
+    auto copier = [](const DamageScratch::Copy &) {};
+
+    WorkStream::run(dof_handler.begin_active(), dof_handler.end(), worker, copier,
+                    DamageScratch::Scratch<dim>(fe, quadrature_formula, flags),
+                    DamageScratch::Copy());
   }
 
   // template <int dim>
@@ -1402,6 +1642,19 @@ namespace StepCooling
     double T0 = prm.get_double({"ModelParameters"}, "InitialTemperature");
     double Tend =  prm.get_double({"ModelParameters"}, "FinalTemperature");
     double dT = prm.get_double({"ModelParameters"}, "TemperatureIncrement");
+
+    // Thread cap for WorkStream. 0 keeps deal.II's default (all available cores); an explicit
+    // value is mainly for scaling measurements (run the same problem at 1, 2, 4, ... threads).
+    // Note this caps deal.II's task scheduler as a whole, not just our two loops.
+    const unsigned int requestedThreads =
+      prm.get_integer({"ParallelizationParameters"}, "NumberOfThreads");
+    if (requestedThreads > 0)
+      MultithreadInfo::set_thread_limit(requestedThreads);
+    std::cout << "Threading: "
+              << (prm.get_bool({"ParallelizationParameters"}, "UseWorkStream")
+                    ? "WorkStream" : "serial (reference path)")
+              << ", n_threads=" << MultithreadInfo::n_threads()
+              << " (hardware concurrency " << MultithreadInfo::n_cores() << ")" << std::endl;
 
     std::string mshFileName = prm.get({"InputFiles"}, "MeshFile");
     std::string cellToMaterialFileName = prm.get({"InputFiles"}, "CellToMaterialFile");
