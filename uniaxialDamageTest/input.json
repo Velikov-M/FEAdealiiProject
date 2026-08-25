@@ -262,6 +262,12 @@
             "default_value": "1e-6",
             "documentation": "Relative tolerance (vs |rhs|) for the CG linear solve. Set tight here (not the 1e-6 production default) so the algebraic stress-damage consistency check in process_solution measures the COUPLING rather than the linear solver -- at 1e-6 it bottomed out at ~1.4e-3*StressThreshold; at 1e-12 it reaches ~2e-11*StressThreshold, i.e. round-off.",
             "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
+        },
+        "MaxLinearSolverIterations": {
+            "value": "1000",
+            "default_value": "1000",
+            "documentation": "Iteration cap for the CG linear solve. This, not wallclock, is what limits mesh size with SSOR-preconditioned CG.",
+            "pattern_description": "[Integer range 1...2147483647 (inclusive)]"
         }
     },
     "ParallelizationParameters": {

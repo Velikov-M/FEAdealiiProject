@@ -401,6 +401,14 @@ namespace StepCooling
                         "1e-6",
                         Patterns::Double(0),
                         "Relative tolerance (vs |rhs|) for the CG linear solve");
+
+      // Was hardcoded at 1000. That is the binding limit on mesh size long before wallclock is:
+      // SSOR-preconditioned CG needs O(1/h) iterations, so refining raises the count fast, and
+      // damage softening makes the system markedly worse conditioned still.
+      prm.declare_entry("MaxLinearSolverIterations",
+                        "1000",
+                        Patterns::Integer(1),
+                        "Iteration cap for the CG linear solve");
     }
     prm.leave_subsection();
     prm.enter_subsection("ParallelizationParameters");
@@ -726,6 +734,7 @@ namespace StepCooling
     void assemble_cells_serial(double curTemperature);
     void assemble_cells_workstream(double curTemperature);
     void solve();
+    mutable unsigned int lastCgIterations = 0;
     //void predict_damage_tempInc(double curTemperature, double tempInc);
     void predict_damage_tempInc_external_solver(double curTemperature, double tempInc);
     void predict_damage_cells_serial(double curTemperature, double tempInc,
@@ -1276,7 +1285,10 @@ namespace StepCooling
   {
     TimerOutput::Scope timer_section(timer, "Solve system");
     const double linearSolverTolerance = prm.get_double({"SolverParameters"}, "LinearSolverTolerance");
-    SolverControl            solver_control(1000, linearSolverTolerance * system_rhs.l2_norm());
+    const unsigned int maxLinearIterations =
+      prm.get_integer({"SolverParameters"}, "MaxLinearSolverIterations");
+    SolverControl            solver_control(maxLinearIterations,
+                                            linearSolverTolerance * system_rhs.l2_norm());
     SolverCG<Vector<double>> cg(solver_control);
 
     PreconditionSSOR<SparseMatrix<double>> preconditioner;
@@ -1291,6 +1303,7 @@ namespace StepCooling
       throw std::runtime_error("CG solver did not converge (last residual " +
                                 std::to_string(solver_control.last_value()) + ")");
 
+    lastCgIterations = solver_control.last_step();
     constraints.distribute(solDisplacement);
   }
 
@@ -1993,6 +2006,7 @@ namespace StepCooling
               << "   Cells: " << n_active_cells << ", DoFs: " << n_dofs << std::endl
               << "   eps_zz applied = " << epsZZApplied << std::endl
               << "   damage: mean=" << damageMean << " spread=" << damageSpread << std::endl
+              << "   CG iterations = " << lastCgIterations << std::endl
               << "   sigma_zz: numeric mean~" << 0.5*(sigmaZZNumMin + sigmaZZNumMax)
               << " spread=" << sigmaZZSpread
               << ", closed-form(mean damage)=" << sigmaZZAtMeanDamage << std::endl
