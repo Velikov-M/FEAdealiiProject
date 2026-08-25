@@ -589,6 +589,11 @@ namespace StepCooling
                         "1e-6",
                         Patterns::Double(0),
                         "Relative tolerance (vs |rhs|) for the CG linear solve");
+
+      prm.declare_entry("MaxLinearSolverIterations",
+                        "1000",
+                        Patterns::Integer(1),
+                        "Iteration cap for the CG linear solve");
     }
     prm.leave_subsection();
     prm.enter_subsection("ParallelizationParameters");
@@ -895,6 +900,7 @@ namespace StepCooling
     void assemble_cells_serial(double curTemperature);
     void assemble_cells_workstream(double curTemperature);
     void solve();
+    mutable unsigned int lastCgIterations = 0;
     void calculateSolutionTemperatureStep(double curT, double dT, unsigned int refinementCycle, int temperatureStepNumber);
     void refine_grid(double fractionToRefine, double fractionToCoarse);
     void output_results(const unsigned int cycle = 1) const;
@@ -1293,7 +1299,10 @@ namespace StepCooling
   {
     TimerOutput::Scope timer_section(timer, "Solve system");
     const double linearSolverTolerance = prm.get_double({"SolverParameters"}, "LinearSolverTolerance");
-    SolverControl            solver_control(1000, linearSolverTolerance * system_rhs.l2_norm());
+    const unsigned int maxLinearIterations =
+      prm.get_integer({"SolverParameters"}, "MaxLinearSolverIterations");
+    SolverControl            solver_control(maxLinearIterations,
+                                            linearSolverTolerance * system_rhs.l2_norm());
     SolverCG<Vector<double>> cg(solver_control);
 
     PreconditionSSOR<SparseMatrix<double>> preconditioner;
@@ -1308,6 +1317,7 @@ namespace StepCooling
       throw std::runtime_error("CG solver did not converge (last residual " +
                                 std::to_string(solver_control.last_value()) + ")");
 
+    lastCgIterations = solver_control.last_step();
     constraints.distribute(solDisplacement);
   }
 
@@ -1734,6 +1744,7 @@ namespace StepCooling
     std::cout << "Refinement cycle " << refinementCycle << ", temperature step " << tempStepNum
               << ", iteration " << iterSolverStepNum << ':' << std::endl
               << "   Cells: " << n_active_cells << ", DoFs: " << n_dofs << std::endl
+              << "   CG iterations = " << lastCgIterations << std::endl
               << "   displacement error vs u_exact: L2=" << L2_error
               << ", H1=" << H1_error << ", Linfty=" << Linfty_error << std::endl;
 

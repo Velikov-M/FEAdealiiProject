@@ -59,8 +59,18 @@ Usage
 import argparse, collections, json, math, os, re, shutil, subprocess, tempfile, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-MEASURED = {1000: 0.20, 8000: 3.40, 64000: 72.20}   # seconds per temperature step
+# Two regimes, both measured at tol 1e-8 on 6 cores/12 threads.
+#   "floppy"  = uniaxialDamageTest: traction-free lateral faces, rigid-body modes removed by
+#               only 3 pinned DoFs. Damage active.
+#   "stiff"   = mmsSandbox: full Dirichlet on every face, real body force. No damage.
+MEASURED = {1000: 0.20, 8000: 3.40, 64000: 72.20}   # floppy, seconds per temperature step
 CG_ITERS = {1000: 424, 8000: 1196, 64000: 3013}
+MEASURED_STIFF = {1000: 0.103, 8000: 0.608, 64000: 5.854}
+CG_ITERS_STIFF = {1000: 22, 8000: 48, 64000: 77}
+
+# Sparse matrix is ~81 nonzeros/row for vector-valued Q1 in 3D, ~12 bytes each -> ~1 kB/DoF.
+# With ~12 GB usable and DoFs ~ 3*cells at these sizes, this caps any run regardless of time.
+MEMORY_CELL_CAP = 4_000_000
 
 
 def measure(nsteps=5, tol=1e-8, cap=200000, max_cycles=3):
@@ -127,6 +137,44 @@ def main():
             side = round(N ** (1 / 3))
             cols.append(f"{N:>9,.0f} cells (~{side}^3, {3*(side+1)**3:>9,.0f} DoF)")
         print(f"  {label:>8} | {cols[0]:>26} | {cols[1]:>26}")
+
+    # --- the boundary conditions, not the PDE, dominate CG cost ---------------
+    bs = math.log(MEASURED_STIFF[64000] / MEASURED_STIFF[1000]) / math.log(64)
+    as_ = MEASURED_STIFF[1000] / 1000 ** bs
+    print("\n" + "=" * 72)
+    print("BOUNDARY CONDITIONS DOMINATE -- the same operator, two constraint regimes:")
+    print(f"  {'cells':>8} | {'floppy BC CG iters':>19} | {'stiff BC CG iters':>18}")
+    for n in ns:
+        print(f"  {n:>8,} | {CG_ITERS[n]:>19,} | {CG_ITERS_STIFF[n]:>18,}")
+    print(f"\n  growth: floppy n_CG ~ N^0.47, stiff n_CG ~ N^0.30 (theory N^0.333)")
+    print(f"  cost:   floppy t_step ~ N^{b:.2f},  stiff t_step ~ N^{bs:.2f}")
+    print("""
+  The uniaxial problem has a TRIVIAL equilibrium solution (uniform stress, exactly
+  representable by Q1) yet is ~40x MORE expensive for CG at 64k cells. Smoothness of the
+  solution is not what CG cost depends on; the spectrum of the constrained operator is.
+  Traction-free surfaces with rigid-body modes removed by three point constraints leave
+  very low-energy deformation modes barely restrained, and that is what wrecks the
+  conditioning. Damage is NOT the cause (iteration counts are identical with it switched
+  off). Note this is inference from the two corners measured, not an isolated experiment:
+  the two tests differ in BCs AND in having a body force AND in damage, and only damage
+  has been ruled out individually.
+
+  WHICH APPLIES TO A REAL RUN: a cooling body with free outer surfaces and minimal
+  restraint sits much closer to the floppy case, so plan with those numbers. If a real
+  model is more heavily constrained, it could be up to an order of magnitude cheaper.""")
+
+    print("\nSame budgets under the stiff-BC regime (upper bound, capped by memory):")
+    print(f"  {'budget':>8} | {'10 temp steps':>24} | {'100 temp steps':>24}")
+    print("  " + "-" * 64)
+    for label, secs in (("10 min", 600), ("2 h", 7200), ("3 h", 10800)):
+        cols = []
+        for steps in (10, 100):
+            N = (secs / steps / as_) ** (1.0 / bs)
+            note = "" if N <= MEMORY_CELL_CAP else "  [RAM-capped]"
+            cols.append(f"{min(N, MEMORY_CELL_CAP):>12,.0f} cells{note}")
+        print(f"  {label:>8} | {cols[0]:>24} | {cols[1]:>24}")
+    print(f"\n  Stiff-BC figures above 64,000 cells are extrapolated well past the measured")
+    print(f"  range and past RAM ({MEMORY_CELL_CAP:,} cells); treat them as a ceiling, not a target.")
 
     big = (10800 / 10 / a) ** (1.0 / b)
     n_big = iters[ns[-1]] * (big / ns[-1]) ** 0.47
