@@ -4,9 +4,12 @@ Cooling of a periodic RVE of randomly oriented graphite domains. Thermal-expansi
 between misoriented anisotropic grains is the classic microcracking mechanism in polycrystalline
 graphite, so cooling alone produces a non-trivial stress field with no applied load at all.
 
-**Status: scaffold.** `main.cpp` is still a verbatim copy of `../mmsSandbox/main.cpp` and currently
-runs the MMS test, not this model. The build is configured and compiles. See the checklist at the
-top of `main.cpp`.
+**Status: running, on the two simpler boundary conditions.** The MMS machinery is gone, the damage
+solver from `../uniaxialDamageTest/` is in, grains carry random c-axis orientations, and both
+`zeroDisplacement` and `freeSurface` run end to end in ~2 s for 10 cooling steps at 1 element/grain.
+The periodic formulation is not implemented: `applyBoundaryConstraints()`,
+`assemble_macroscopic_blocks()` and `solve_with_zero_mean_stress()` carry templates for it and throw
+if selected. See `homogenization.md` for the derivation they must implement.
 
 ## Setup
 
@@ -17,6 +20,30 @@ top of `main.cpp`.
 - Cooling from 2000 K to 1800 K in 10 steps.
 
 ## Design decisions and the reasoning behind them
+
+### Boundary conditions, in the order they are being built
+
+`BoundaryConditions/Type` selects one of three, sharing every other code path:
+
+| Type | What it is | `<sigma>` | CG iters (1 elem/grain) |
+|---|---|---|---|
+| `zeroDisplacement` | `u = 0` on the whole boundary | ~4.6e8 Pa at `dT = -200 K` | 19 |
+| `freeSurface` | traction-free + minimal 3-2-1 support | ~0.02 Pa (i.e. zero) | 174 |
+| `periodic` | `u = Ebar.x + u_per`, `<sigma>=0` | 0 by construction | not implemented |
+
+`zeroDisplacement` is a machinery test, not physics: clamping forbids macroscopic contraction, so
+it develops a uniform triaxial tension of tens of MPa. That is visible in the run — the tension
+fraction is exactly 1.000 and `<sigma>` grows linearly with `|dT|`, matching the `3*K*alpha*|dT|`
+estimate that motivated this whole formulation.
+
+`freeSurface` is a genuine free-cooling state: traction-free boundaries give `<sigma> = 0`
+identically by the average stress theorem, and the code measures `|<sigma>|` at ~1e-9 of the local
+stress magnitude, which is solver zero. **That is a real correctness check on the formulation, not
+just a diagnostic.** What it is not is a *periodic* state — boundary grains relax against a real
+free surface, so there is a surface layer with no RVE character.
+
+The measured cost of the floppy support is a 9x jump in CG iterations (19 -> 174), the "floppy BC"
+regime already seen in `../uniaxialDamageTest/`. Solve time goes from 2% to 32% of the run.
 
 ### Macroscopic strain: free cooling, `<sigma> = 0`
 
@@ -36,7 +63,12 @@ is post-processing in step 1) this is a superposition:
 Seven solves per temperature step, **all with the same matrix**, so the preconditioner is built once.
 `Cbar` and the effective CTE `alphabar` drop out as useful by-products.
 
-**This is only valid while the problem stays linear** — it breaks once damage actually evolves.
+**Superposition does not break because damage exists — only if damage changes *during* the solve.**
+The scheme here is staggered (damage frozen while equilibrium is solved, then the two iterated), so
+each inner pass is exactly linear in `(u_per, Ebar)` and the 7-solve is exact per pass. Only the
+number of times it runs changes. See `homogenization.md` section 7; that section also gives the
+reason to *stay* staggered, namely that a monolithic damage tangent is non-symmetric and would cost
+us CG.
 
 ### Resolution: start at 1 element/grain, then refine and compare
 

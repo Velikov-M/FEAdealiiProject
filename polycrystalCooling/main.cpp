@@ -1,56 +1,63 @@
 // ============================================================================================
-// SCAFFOLD ONLY -- NOT YET THE POLYCRYSTAL MODEL.
+// POLYCRYSTAL COOLING MODEL
 //
-// This file is still a verbatim copy of ../mmsSandbox/main.cpp (the thermo-elastic MMS test),
-// kept as the starting point because it already carries WorkStream threading, the corrected
-// temperature-step loop, LinearSolverTolerance / MaxLinearSolverIterations, and a working
-// thermal-load path that uses a real CTE. Running it as-is performs the MMS test, NOT the
-// cooling model -- see README.md in this directory for the intended model and the build order.
+// Cooling of an RVE of nuclear graphite made of randomly oriented crystallite domains. Each
+// original mesh cell is one domain, carrying its own c-axis orientation. Cooling alone -- with
+// no applied load -- produces a non-trivial stress field, because neighbouring grains have
+// mismatched thermal expansion (alpha_c >> alpha_a for graphite) and cannot contract freely
+// past one another. That mismatch is the classic microcracking mechanism in polycrystalline
+// graphite, and the point of the model is to locate where it drives damage.
 //
-// TO IMPLEMENT (see README.md for the reasoning behind each):
-//   [ ] per-domain random c-axis orientations (uniform ON THE SPHERE, not uniform Euler angles)
-//   [ ] periodic boundary constraints on the three face pairs + one pinned point
-//   [ ] macroscopic strain from <sigma> = 0 via 7-solve superposition (same matrix each time)
-//   [ ] local-frame sigma_zz output + tension/compression and threshold-exceedance statistics
-//   [ ] strip the MMS-specific machinery (MmsBodyForce, PreciseDisplacementSolution,
-//       TemperatureField, the manufactured-solution error norms) once the above is in
-// ============================================================================================
+// See README.md for the design rationale and homogenization.md for the full derivation of the
+// periodic / <sigma> = 0 formulation.
 //
-// Thermo-elastic MMS verification, ZERO damage.
+// ---------------------------------------------------------------------------------------------
+// BOUNDARY CONDITIONS -- implemented in increasing order of difficulty
 //
-// PURPOSE: verify assemble_system() -- both the stiffness operator and the thermal (CTE) load
-// vector -- against a manufactured solution. Damage is switched off entirely here: the damage
-// ODE and the stress-damage coupling are verified separately in ../uniaxialDamageTest/, and the
-// earlier attempt to verify BOTH at once through a damage-active MMS failed for a structural
-// reason (the manufactured stress does not respond to the computed damage, so the construction
-// had no negative feedback and error compounded ~3x per step). Splitting the two concerns is
-// what makes each of them actually testable.
+// BoundaryConditions/Type in input.json selects one of:
 //
-// WHY THE TEMPERATURE FIELD VARIES IN SPACE: with a uniform temperature, a homogeneous material
-// and Dirichlet data everywhere, the CTE is INVISIBLE to an MMS test. The thermal term in the
-// weak form is the integral of eps(v) : C:alpha*dT; with C, alpha and dT all constant that
-// integrand is a constant tensor S, so the integral collapses to a boundary term that vanishes
-// for every test function with zero boundary values. Equivalently: div(C:alpha*dT) = 0, so alpha
-// drops out of the PDE and survives only in the Dirichlet data that the manufactured solution
-// supplies anyway -- change alpha33_0 and the computed displacement does not move.
+//   "zeroDisplacement"  u = 0 on the whole boundary. Physically a rigidly clamped block, NOT
+//                       free cooling: it forbids macroscopic contraction and therefore develops
+//                       a large spurious triaxial tension. Included as the simplest possible
+//                       well-posed case -- no rigid-body modes, best-conditioned matrix -- so
+//                       the grain machinery (orientations, rotation of C and alpha, damage) can
+//                       be exercised before boundary handling gets interesting. Do not read
+//                       physics off it.
 //
-// Giving T a spatial gradient fixes this: div(sigma) = div(C:eps(u)) - C:alpha . grad(dT), and
-// the second term puts alpha directly into the manufactured body force. The elastic moduli and
-// CTE are kept temperature-INdependent (the *_functionOfTemperature entries are 1.0) so that C
-// and alpha stay spatially constant and the derivation above holds exactly; a
-// temperature-dependent C would add further terms and is a separate step.
+//   "freeSurface"       Traction-free on the whole boundary, plus a minimal kinematic support
+//                       that removes the 6 rigid-body modes and nothing else. Because t = 0
+//                       everywhere on the boundary, the average stress theorem gives
+//                       <sigma> = (1/|Omega|) * integral of (t_i x_j) dS = 0 identically: this
+//                       IS a free-cooling, zero-mean-stress state. What it is not is a
+//                       *periodic* one -- boundary grains relax against a real free surface, so
+//                       there is a surface layer with no RVE character, and no scale separation.
+//                       Good physics near the centre, wrong physics near the faces.
 //
-// SETUP:
-//   - temperature rise dT(x,y,z;t) = t*(T_end - T_0) * ( x/L + exp(-y/L) )
-//       linear in x, exponential in y, independent of z, ramped by the step parameter t
-//   - manufactured displacement u_exact (see PreciseDisplacementSolution), Dirichlet on ALL faces
-//   - body force b = -div(sigma_exact) with sigma_exact = C:(eps(u_exact) - alpha*dT)
-//   - 10 temperature steps, i.e. 10 independent thermo-elastic problems
-//   - damage identically 0 (never updated; quadrature storage retained so assemble_system stays
-//     shape-identical to the coupled version in ../uniaxialDamageTest/)
+//   "periodic"          The target formulation: u = Ebar.x + u_periodic with Ebar determined by
+//                       <sigma> = 0. NOT YET IMPLEMENTED -- see assemble_macroscopic_blocks()
+//                       and solve_with_zero_mean_stress() below, which carry the block structure
+//                       and the 7-solve algorithm as a template to be filled in.
 //
-// The body force was derived with sympy and cross-checked numerically (raw symbolic evaluation
-// vs the mechanically generated C strings below) at several points before being pasted in.
+// The three share every other code path (assembly, damage, output), so results are directly
+// comparable and the boundary treatment is the only thing that changes.
+// ---------------------------------------------------------------------------------------------
+//
+// TEMPERATURE: uniform in space, stepped down from InitialTemperature to FinalTemperature. The
+// driving force here is orientation mismatch between grains, not a thermal gradient, so unlike
+// ../mmsSandbox (where a spatial gradient was needed to make the CTE observable) there is no
+// reason for T to vary in space. The thermal strain is alpha(T)*(T-T_0), a secant/mean CTE --
+// see homogenization.md section 2 if literature values turn out to be instantaneous.
+//
+// DAMAGE: the Rabotnov-type kinetic law verified in ../uniaxialDamageTest/, driven by the
+// LOCAL-frame sigma_zz (the c-axis normal stress) and solved per quadrature point by a
+// bracketed toms748 root search. Coupling to the displacement solve is staggered: damage is
+// frozen while equilibrium is solved, and the two are iterated to convergence within each
+// temperature step.
+//
+// NOT YET DONE (see README.md):
+//   [ ] periodic boundary constraints + the macroscopic-strain unknowns (BC type "periodic")
+//   [ ] several seeds / realization statistics (deliberately descoped for now)
+//   [ ] sourced graphite CTE values -- input.json still carries flagged PLACEHOLDERS
 //
 #include <deal.II/base/quadrature_lib.h>
 #include <deal.II/base/function.h>
@@ -99,6 +106,9 @@
 #include <iostream>
 #include <cmath>
 #include <string>
+#include <random>
+#include <algorithm>
+#include <limits>
 
 #include <boost/math/tools/roots.hpp>
 
@@ -170,241 +180,116 @@ namespace StepCooling
     }
   };
 
-  template <int dim>
-  class PreciseDisplacementSolution : public Function<dim>
+  // ------------------------------------------------------------------------------------------
+  // Boundary conditions
+  // ------------------------------------------------------------------------------------------
+  // See the file header for what each one means physically and why they are staged in this
+  // order. Parsed once from BoundaryConditions/Type; every other code path is shared.
+  enum class BoundaryConditionType
   {
-    public:
-      PreciseDisplacementSolution();
-      virtual void vector_value(const Point<dim> &p,
-                                Vector<double>   &values) const override;
-      virtual void vector_value_list(const std::vector<Point<dim>> &points,
-                        std::vector<Vector<double>>   &value_list) const override;
-      virtual void vector_gradient(const Point<dim> &p,
-                        std::vector<Tensor<1,dim>>   &gradients) const override;
-      virtual void vector_gradient_list(const std::vector<Point<dim>> &points,
-                        std::vector<std::vector<Tensor<1,dim>>>   &gradient_list) const override;
-
-      void set_prm_consts(const ParameterHandler &prm);
-      void set_current_temperature(const double curT);
-
-    private:
-      double L, T_0, T_end, curT, U0;
-
+    zeroDisplacement, // u = 0 on the whole boundary (clamped; not free cooling)
+    freeSurface,      // traction-free + minimal kinematic support (a valid <sigma> = 0 state)
+    periodic          // u = Ebar.x + u_periodic with <sigma> = 0  -- NOT YET IMPLEMENTED
   };
 
-  template <int dim>
-  PreciseDisplacementSolution<dim>::PreciseDisplacementSolution()
-    : Function<dim>(dim)
+  inline BoundaryConditionType parseBoundaryConditionType(const std::string &s)
   {
-    this->L = 0.0;
-    this->T_0 = 0.0;
-    this->T_end = 0.0;
-    this->curT = 0.0;
-    this->U0 = 1.0;
+    if (s == "zeroDisplacement") return BoundaryConditionType::zeroDisplacement;
+    if (s == "freeSurface")      return BoundaryConditionType::freeSurface;
+    if (s == "periodic")         return BoundaryConditionType::periodic;
+    throw std::runtime_error("unknown BoundaryConditions/Type '" + s +
+                             "' (expected zeroDisplacement | freeSurface | periodic)");
   }
 
-  template <int dim>
-  void PreciseDisplacementSolution<dim>::vector_value(const Point<dim> & p,
-                                           Vector<double> &values) const
+  inline std::string boundaryConditionTypeName(BoundaryConditionType t)
   {
-    Assert(dim == 3, ExcNotImplemented());
-    AssertDimension(values.size(), dim);
-
-    double t = (T_0 - curT) / (T_0 - T_end);
-    values(0) = U0 * cos(M_PI*p[0]/L) * cos(M_PI*p[1]/L) * cos(M_PI*p[2]/L) * exp(-t);
-    values(1) = U0 * sin(M_PI*p[0]/L) * cos(M_PI*p[1]/L) * cos(M_PI*p[2]/L) * exp(-t);
-    values(2) = U0 * sin(M_PI*p[0]/L) * sin(M_PI*p[1]/L) * cos(M_PI*p[2]/L) * exp(-t);
-  }
-
-  template <int dim>
-  void PreciseDisplacementSolution<dim>::vector_value_list(
-    const std::vector<Point<dim>> &points,
-    std::vector<Vector<double>>   &value_list) const
-  {
-    const unsigned int n_points = points.size();
- 
-    AssertDimension(value_list.size(), n_points);
- 
-    for (unsigned int p = 0; p < n_points; ++p)
-      PreciseDisplacementSolution<dim>::vector_value(points[p], value_list[p]);
-  }
-
-  template <int dim>
-  void PreciseDisplacementSolution<dim>::vector_gradient(const Point<dim> & p,
-                                           std::vector<Tensor<1,dim>> &gradients) const
-  {
-    Assert(dim == 3, ExcNotImplemented());
-    AssertDimension(gradients.size(), dim);
-
-    double t = (T_0 - curT) / (T_0 - T_end);
-    const double k = M_PI / L;
-    const double cx = cos(k*p[0]), sx = sin(k*p[0]);
-    const double cy = cos(k*p[1]), sy = sin(k*p[1]);
-    const double cz = cos(k*p[2]), sz = sin(k*p[2]);
-    const double e = exp(-t);
-
-    // gradients of values(0) = cos(kx) cos(ky) cos(kz) * exp(-t)
-    gradients[0][0] = U0 * -k * sx * cy * cz * e;
-    gradients[0][1] = U0 * -k * cx * sy * cz * e;
-    gradients[0][2] = U0 * -k * cx * cy * sz * e;
-
-    // gradients of values(1) = sin(kx) cos(ky) cos(kz) * exp(-t)
-    gradients[1][0] = U0 *  k * cx * cy * cz * e;
-    gradients[1][1] = U0 * -k * sx * sy * cz * e;
-    gradients[1][2] = U0 * -k * sx * cy * sz * e;
-
-    // gradients of values(2) = sin(kx) sin(ky) cos(kz) * exp(-t)
-    gradients[2][0] = U0 *  k * cx * sy * cz * e;
-    gradients[2][1] = U0 *  k * sx * cy * cz * e;
-    gradients[2][2] = U0 * -k * sx * sy * sz * e;
-  }
-
-  template <int dim>
-  void PreciseDisplacementSolution<dim>::vector_gradient_list(
-    const std::vector<Point<dim>> &points,
-    std::vector<std::vector<Tensor<1,dim>>>   &gradient_list) const
-  {
-    const unsigned int n_points = points.size();
-
-    AssertDimension(gradient_list.size(), n_points);
-
-    for (unsigned int p = 0; p < n_points; ++p)
-      PreciseDisplacementSolution<dim>::vector_gradient(points[p], gradient_list[p]);
-  }
-
-  template <int dim>
-  void PreciseDisplacementSolution<dim>::set_prm_consts(const ParameterHandler &prm)
-  {
-    this->L = prm.get_double({"ModelParameters"}, "LengthOfTheBody");
-    this->T_0 = prm.get_double({"ModelParameters"}, "InitialTemperature");
-    this->T_end = prm.get_double({"ModelParameters"}, "FinalTemperature");
-    this->U0 = prm.get_double({"ModelParameters"}, "ManufacturedDisplacementAmplitude");
-  }
-
-  template <int dim>
-  void PreciseDisplacementSolution<dim>::set_current_temperature(const double curT)
-  {
-    this->curT = curT;
-  }
-
-  // The manufactured/exact damage field omega(x,y,z,t) = 0.5*t^1.5*(1 +
-  // 0.3*sin(2*pi*x/L)*cos(2*pi*y/L)*sin(2*pi*z/L)) -- see myNotebook.ipynb cells 5 and 19. Single
-  // source of truth for this formula: it used to be duplicated inline (with real risk of the
-  // copies drifting out of sync) in mmsKineticResidual, mmsDerivativeKineticResidual, the
-  // mmsExactActingStress lambda in predict_damage_tempInc_external_solver, and now also in
-  // process_solution's damage-error reporting -- consolidated here, mirroring how
-  // PreciseDisplacementSolution is the single source of truth for the exact displacement field.
-
-  // Spatially varying temperature field -- see the file header for why a uniform one would make
-  // this test blind to the CTE. Linear in x, exponential in y, independent of z, ramped linearly
-  // by the pseudo-time step parameter. This profile is baked into the manufactured body force
-  // below, so the two must be changed together.
-  template <int dim>
-  class TemperatureField : public Function<dim>
-  {
-    public:
-      TemperatureField() : Function<dim>(1) {}
-
-      void set_prm_consts(const ParameterHandler &prm)
-      {
-        L = prm.get_double({"ModelParameters"}, "LengthOfTheBody");
-        T_0 = prm.get_double({"ModelParameters"}, "InitialTemperature");
-        T_end = prm.get_double({"ModelParameters"}, "FinalTemperature");
-      }
-      void set_current_temperature(const double cT) { curT = cT; }
-
-      // Dimensionless spatial shape, identical to the sympy derivation's `profile`.
-      double profile(const Point<dim> &p) const { return p[0]/L + std::exp(-p[1]/L); }
-
-      // T(x) - T_0, the quantity the thermal load actually depends on.
-      double temperature_rise(const Point<dim> &p) const
-      {
-        const double t = (T_0 - curT) / (T_0 - T_end);
-        return t * (T_end - T_0) * profile(p);
-      }
-
-      virtual double value(const Point<dim> &p, const unsigned int = 0) const override
-      { return T_0 + temperature_rise(p); }
-
-    private:
-      double L = 0.0, T_0 = 0.0, T_end = 0.0, curT = 0.0;
-  };
-
-  // Manufactured body force b = -div(sigma_exact), sigma_exact = C:(eps(u_exact) - alpha*dT(x)).
-  // Generated by sympy from exactly the u_exact and dT above and cross-checked numerically
-  // (raw symbolic vs this generated code) before being pasted in. bz carries no alpha term --
-  // correct, since dT is independent of z, so the z-component of C:alpha . grad(dT) vanishes.
-  // bx and by DO carry alpha_11 and alpha_33 explicitly: that is the CTE being placed under test.
-  template <int dim>
-  class MmsBodyForce : public Function<dim>
-  {
-  public:
-    MmsBodyForce() : Function<dim>(dim) {}
-
-    void set_prm_consts(const ParameterHandler &prm)
+    switch (t)
     {
-      L = prm.get_double({"ModelParameters"}, "LengthOfTheBody");
-      T_0 = prm.get_double({"ModelParameters"}, "InitialTemperature");
-      T_end = prm.get_double({"ModelParameters"}, "FinalTemperature");
-      C11_0 = prm.get_double({"MaterialParameters", "LinearElasticityParameters"}, "C11_0");
-      C12_0 = prm.get_double({"MaterialParameters", "LinearElasticityParameters"}, "C12_0");
-      C13_0 = prm.get_double({"MaterialParameters", "LinearElasticityParameters"}, "C13_0");
-      C33_0 = prm.get_double({"MaterialParameters", "LinearElasticityParameters"}, "C33_0");
-      C44_0 = prm.get_double({"MaterialParameters", "LinearElasticityParameters"}, "C44_0");
-      alpha_11 = prm.get_double({"MaterialParameters", "ThermoElasticParameters"}, "alpha11_0");
-      alpha_33 = prm.get_double({"MaterialParameters", "ThermoElasticParameters"}, "alpha33_0");
-      U0 = prm.get_double({"ModelParameters"}, "ManufacturedDisplacementAmplitude");
+      case BoundaryConditionType::zeroDisplacement: return "zeroDisplacement";
+      case BoundaryConditionType::freeSurface:      return "freeSurface";
+      case BoundaryConditionType::periodic:         return "periodic";
     }
-    void set_current_temperature(const double cT) { curT = cT; }
+    return "?";
+  }
 
-    virtual void vector_value(const Point<dim> &p, Vector<double> &values) const override
-    {
-      Assert(dim == 3, ExcNotImplemented());
-      AssertDimension(values.size(), dim);
-      const double t = (T_0 - curT) / (T_0 - T_end);
-      values(0) = (-C11_0*(L*alpha_11*t*(T_0 - T_end)*exp(t) - pow(M_PI, 2)*U0*cos(M_PI*p[0]/L)*cos(M_PI*p[1]/L)*cos(M_PI*p[2]/L)) - C12_0*(L*alpha_11*t*(T_0 - T_end)*exp(t) - pow(M_PI, 2)*U0*sin(M_PI*p[1]/L)*cos(M_PI*p[0]/L)*cos(M_PI*p[2]/L)) - C13_0*(L*alpha_33*t*(T_0 - T_end)*exp(t) - pow(M_PI, 2)*U0*sin(M_PI*p[1]/L)*sin(M_PI*p[2]/L)*cos(M_PI*p[0]/L)) + (1.0/4.0)*pow(M_PI, 2)*U0*(2*C44_0*cos(M_PI*(p[1] - p[2])/L) + M_SQRT2*(C11_0 - C12_0)*sin(M_PI*(1.0/4.0 + p[1]/L))*cos(M_PI*p[2]/L))*cos(M_PI*p[0]/L))*exp(-t)/pow(L, 2);
-      values(1) = (1.0/4.0)*(M_SQRT2*pow(M_PI, 2)*U0*(2*C44_0*sin(M_PI*(1.0/4.0 + p[2]/L))*cos(M_PI*p[1]/L) + (C11_0 - C12_0)*sin(M_PI*(1.0/4.0 - p[1]/L))*cos(M_PI*p[2]/L))*exp((L*t + p[1])/L)*sin(M_PI*p[0]/L) + 4*(C11_0*(L*alpha_11*t*(T_0 - T_end)*exp(t) + pow(M_PI, 2)*U0*exp(p[1]/L)*sin(M_PI*p[0]/L)*cos(M_PI*p[1]/L)*cos(M_PI*p[2]/L)) + C12_0*(L*alpha_11*t*(T_0 - T_end)*exp(t) - pow(M_PI, 2)*U0*exp(p[1]/L)*sin(M_PI*p[0]/L)*sin(M_PI*p[1]/L)*cos(M_PI*p[2]/L)) + C13_0*(L*alpha_33*t*(T_0 - T_end)*exp(t) + pow(M_PI, 2)*U0*exp(p[1]/L)*sin(M_PI*p[0]/L)*sin(M_PI*p[2]/L)*cos(M_PI*p[1]/L)))*exp(t))*exp(-(2*L*t + p[1])/L)/pow(L, 2);
-      values(2) = (1.0/2.0)*pow(M_PI, 2)*U0*(-2*M_SQRT2*C13_0*sin(M_PI*(1.0/4.0 + p[1]/L))*sin(M_PI*p[2]/L) + 2*C33_0*sin(M_PI*p[1]/L)*cos(M_PI*p[2]/L) - M_SQRT2*C44_0*sin(M_PI*(1.0/4.0 + p[1]/L))*sin(M_PI*p[2]/L) + 2*C44_0*sin(M_PI*p[1]/L)*cos(M_PI*p[2]/L))*exp(-t)*sin(M_PI*p[0]/L)/pow(L, 2);
-    }
-
-    virtual void vector_value_list(const std::vector<Point<dim>> &points,
-                                    std::vector<Vector<double>> &value_list) const override
-    {
-      AssertDimension(value_list.size(), points.size());
-      for (unsigned int i = 0; i < points.size(); ++i)
-        MmsBodyForce<dim>::vector_value(points[i], value_list[i]);
-    }
-
-  private:
-    double L = 0.0, T_0 = 0.0, T_end = 0.0;
-    double C11_0 = 0.0, C12_0 = 0.0, C13_0 = 0.0, C33_0 = 0.0, C44_0 = 0.0;
-    double alpha_11 = 0.0, alpha_33 = 0.0, curT = 0.0, U0 = 0.0;
-  };
-
+  // ------------------------------------------------------------------------------------------
+  // Random crystallite orientations
+  // ------------------------------------------------------------------------------------------
+  // Only the c-axis DIRECTION matters: rotation about c is a symmetry of a transversely
+  // isotropic crystal, so this is a point-on-the-sphere problem, not a uniform-SO(3) problem.
+  //
+  // The trap this avoids: sampling theta uniformly on [0, pi] does NOT give a uniform direction
+  // -- it clusters near the poles, because the area element is sin(theta) dtheta dphi. Sampling
+  // cos(theta) uniformly on [-1, 1] is the standard fix and is exactly uniform on the sphere.
+  //
+  // The two axes completing the frame are NOT random: they are built deterministically from c by
+  // the branchless orthonormal-basis construction of Duff et al., "Building an Orthonormal
+  // Basis, Revisited" (JCGT 2017) -- a published, numerically stable construction rather than
+  // one improvised here (its `sign`/`a` algebra is specifically what keeps it well conditioned
+  // when c is near -e_z, where the naive Hughes-Moller construction loses precision). Since
+  // rotation about c is a material symmetry, which particular frame comes out cannot affect any
+  // result; using a stable deterministic one just avoids spending randomness on a non-degree of
+  // freedom.
+  //
+  // Returned matrix R maps GLOBAL -> LOCAL: its ROWS are the local basis vectors written in
+  // global coordinates, so v_local = R * v_global and row 2 is the c-axis. That is the
+  // convention getRotTensorGlobalToLocal() and every basis_transformation() call below assume,
+  // and it is what makes localStress[2][2] the c-axis normal stress that drives damage.
   template <int dim>
-  class MmsBoundaryDisplacementFunction : public Function<dim> // boundary displacement function for method of manufactured solutions (MMS) testing
+  Tensor<2, dim> orientationFromCAxis(const Tensor<1, dim> &c)
   {
-    public:
-      MmsBoundaryDisplacementFunction(const PreciseDisplacementSolution<dim>& ps): Function<dim>(dim),
-      preciseSolution(ps)
-      {}
+    static_assert(dim == 3, "crystallite orientations are only defined in 3D");
+    const double sign = std::copysign(1.0, c[2]);
+    const double a = -1.0 / (sign + c[2]);
+    const double b = c[0] * c[1] * a;
 
-      virtual void vector_value(const Point<dim> &p,
-                         Vector<double>   &values) const override
-      { 
-        Vector<double> u_exact(dim);
-        preciseSolution.vector_value(p, u_exact);
-        for (unsigned int d=0; d<dim; ++d) values(d) = u_exact(d);
-      }
-    private:
-      const PreciseDisplacementSolution<dim>& preciseSolution;
+    Tensor<1, dim> e1, e2;
+    e1[0] = 1.0 + sign * c[0] * c[0] * a;  e1[1] = sign * b;                 e1[2] = -sign * c[0];
+    e2[0] = b;                             e2[1] = sign + c[1] * c[1] * a;   e2[2] = -c[1];
 
-  };
+    Tensor<2, dim> R;
+    for (unsigned int d = 0; d < dim; ++d)
+    {
+      R[0][d] = e1[d];
+      R[1][d] = e2[d];
+      R[2][d] = c[d];
+    }
+    return R;
+  }
 
-  // Every face carries Dirichlet data from the manufactured solution, so a single id suffices.
+  // One uniformly distributed c-axis direction, and the frame built on it.
+  template <int dim>
+  Tensor<2, dim> randomOrientationUniformOnSphere(std::mt19937_64 &rng)
+  {
+    static_assert(dim == 3, "crystallite orientations are only defined in 3D");
+    std::uniform_real_distribution<double> uniform01(0.0, 1.0);
+
+    const double cosTheta = 2.0 * uniform01(rng) - 1.0;             // UNIFORM IN cos(theta)
+    const double sinTheta = std::sqrt(std::max(0.0, 1.0 - cosTheta * cosTheta));
+    const double phi      = 2.0 * numbers::PI * uniform01(rng);
+
+    Tensor<1, dim> c;
+    c[0] = sinTheta * std::cos(phi);
+    c[1] = sinTheta * std::sin(phi);
+    c[2] = cosTheta;
+    return orientationFromCAxis<dim>(c);
+  }
+
+
+  // The .msh carries no surface elements at all, so every face arrives with the default id 0.
+  // "zeroDisplacement" needs nothing finer than that. "periodic" will need the three face pairs
+  // told apart, which is what assignBoundaryIds() (below) is for.
   namespace BoundaryIds
   {
-    constexpr types::boundary_id allFaces = 0; // mesh default; u = u_exact prescribed everywhere
+    constexpr types::boundary_id allFaces = 0; // mesh default, before assignBoundaryIds() runs
+
+    // Face-pair ids for periodic matching. xMinus/xPlus are the pair normal to e_x, etc.
+    constexpr types::boundary_id xMinus = 1;
+    constexpr types::boundary_id xPlus  = 2;
+    constexpr types::boundary_id yMinus = 3;
+    constexpr types::boundary_id yPlus  = 4;
+    constexpr types::boundary_id zMinus = 5;
+    constexpr types::boundary_id zPlus  = 6;
   }
 
   class ParameterReader : public EnableObserverPointer
@@ -436,16 +321,6 @@ namespace StepCooling
                         Patterns::Double(0),
                         "Temperature increment for each step");
 
-      // Amplitude of the manufactured displacement. Deliberately small: with a unit amplitude
-      // the elastic load |div(C:eps(u))| ~ 1e13 dwarfs the thermal load |C:alpha.grad(dT)| ~ 2.5e9
-      // by ~4000x, so a wrong CTE perturbs the answer by ~1% and the convergence rate still looks
-      // perfect -- i.e. the CTE would be nominally "covered" but not actually tested. Setting the
-      // amplitude to the ratio of the two makes them comparable, so an error in either the
-      // stiffness or the thermal term shows up. Verified by mutation testing (see the header).
-      prm.declare_entry("ManufacturedDisplacementAmplitude",
-                        "2.382e-4",
-                        Patterns::Double(0),
-                        "Amplitude U0 of the manufactured displacement field");
 
       prm.declare_entry("LengthOfTheBody",
                         "1",
@@ -456,17 +331,27 @@ namespace StepCooling
                         Patterns::Double(0),
                         "Temperature at the end of cooling process");
 
-      // "Temperature" in this test is a dimensionless pseudo-time/loading parameter, not a real
-      // temperature -- CTE is set to 0 in input.json so it has no thermal effect at all; it only
-      // drives the applied boundary displacement below (existing temperature-stepping loop
-      // infrastructure reused as-is). See run()'s comment for the full rationale.
-      prm.declare_entry("AppliedAxialStrainRate",
-                        "0.02",
-                        Patterns::Double(0),
-                        "dEpsilonZZ/d(pseudo-time): applied axial strain accumulated per unit of "
-                        "InitialTemperature-FinalTemperature range, ramped linearly. Boundary "
-                        "displacement on the loaded face is this times LengthOfTheBody times "
-                        "elapsed pseudo-time.");
+    }
+    prm.leave_subsection();
+    prm.enter_subsection("BoundaryConditions");
+    {
+      // See the file header for the physical meaning of each and why they are staged this way.
+      prm.declare_entry("Type",
+                        "zeroDisplacement",
+                        Patterns::Selection("zeroDisplacement|freeSurface|periodic"),
+                        "Boundary condition family. 'zeroDisplacement' clamps the whole boundary "
+                        "(simplest, well conditioned, but forbids macroscopic contraction so it "
+                        "is NOT free cooling). 'freeSurface' is traction-free plus minimal "
+                        "kinematic support: a genuine <sigma>=0 state, but with a surface layer "
+                        "that has no RVE character. 'periodic' is the target formulation "
+                        "(u = Ebar.x + u_periodic with <sigma>=0) and is NOT YET IMPLEMENTED.");
+
+      prm.declare_entry("OrientationSeed",
+                        "20260905",
+                        Patterns::Integer(0),
+                        "Seed for the per-grain random c-axis orientations. RECORD THIS with any "
+                        "result: damage initiation is an extreme-value statistic and genuinely "
+                        "realization-sensitive, so a result is not reproducible without it.");
     }
     prm.leave_subsection();
     prm.enter_subsection("MaterialParameters");
@@ -807,7 +692,7 @@ namespace StepCooling
   public:
     CteTensor() = default;
     void setFromPrm(const ParameterHandler &prm);
-    SymmetricTensor<2,dim,double> getcteTensor(double curTemperature);
+    SymmetricTensor<2,dim,double> getcteTensor(double curTemperature) const;
   private:
     std::unique_ptr<Function<1>> alpha11_func;
     std::unique_ptr<Function<1>> alpha33_func;
@@ -833,7 +718,7 @@ namespace StepCooling
   }
 
   template <int dim>
-  SymmetricTensor<2,dim,double> CteTensor<dim>::getcteTensor(double curTemperature)
+  SymmetricTensor<2,dim,double> CteTensor<dim>::getcteTensor(double curTemperature) const
   {
     SymmetricTensor<2, dim, double> cteTensor;
     Point<1> tempPoint(curTemperature);
@@ -860,9 +745,6 @@ namespace StepCooling
         , JxW_q(quadrature.size())
         , shapeGradSymm(fe.n_dofs_per_cell(),
                         std::vector<SymmetricTensor<2, dim>>(quadrature.size()))
-        , deltaT_q(quadrature.size())
-        , bodyForce_q(quadrature.size())
-        , bodyForceValue(dim)
       {}
 
       Scratch(const Scratch &s)
@@ -871,18 +753,17 @@ namespace StepCooling
         , globalElasticTensor_q(s.globalElasticTensor_q.size())
         , JxW_q(s.JxW_q.size())
         , shapeGradSymm(s.shapeGradSymm)
-        , deltaT_q(s.deltaT_q.size())
-        , bodyForce_q(s.bodyForce_q.size())
-        , bodyForceValue(dim)
       {}
 
       FEValues<dim> fe_values;
       std::vector<SymmetricTensor<4, dim>> globalElasticTensor_q;
       std::vector<double> JxW_q;
       std::vector<std::vector<SymmetricTensor<2, dim>>> shapeGradSymm;
-      std::vector<double> deltaT_q;                 // T(x_q) - T_0, spatially varying
-      std::vector<Tensor<1, dim>> bodyForce_q;      // manufactured b(x_q)
-      Vector<double> bodyForceValue;                // scratch for MmsBodyForce::vector_value
+      // No per-q temperature and no body force any more: the RVE cools uniformly (so the
+      // temperature rise is one scalar for the whole step) and the cooling model has no body
+      // force at all -- the thermal load enters as an eigenstrain inside sigma. That second
+      // point is not cosmetic: a body force would invalidate the average stress theorem that
+      // <sigma> = 0 rests on (see homogenization.md section 13).
     };
 
     struct Copy
@@ -892,6 +773,36 @@ namespace StepCooling
       std::vector<types::global_dof_index> local_dof_indices;
     };
   } // namespace AssemblyScratch
+
+  // Scratch/copy pair for the threaded damage update. Ported from ../uniaxialDamageTest/, where
+  // the damage solver was verified against a closed-form reference.
+  namespace DamageScratch
+  {
+    template <int dim>
+    struct Scratch
+    {
+      Scratch(const FiniteElement<dim> &fe, const Quadrature<dim> &quadrature,
+              const UpdateFlags flags)
+        : fe_values(fe, quadrature, flags)
+        , global_displacement_gradients(quadrature.size())
+      {}
+
+      Scratch(const Scratch &s)
+        : fe_values(s.fe_values.get_fe(), s.fe_values.get_quadrature(),
+                    s.fe_values.get_update_flags())
+        , global_displacement_gradients(s.global_displacement_gradients.size())
+      {}
+
+      FEValues<dim> fe_values;
+      std::vector<Tensor<2, dim>> global_displacement_gradients;
+    };
+
+    // Empty: the damage update writes only into the current cell's own quadrature-point data,
+    // which no other cell touches, so there is nothing to hand to a serialized copier.
+    // WorkStream still requires the type to exist.
+    struct Copy
+    {};
+  } // namespace DamageScratch
 
   template <int dim>
   class ElasticProblem
@@ -919,11 +830,99 @@ namespace StepCooling
     void assemble_cells_workstream(double curTemperature);
     void solve();
     mutable unsigned int lastCgIterations = 0;
+    // output_results() is const and needs the current temperature to re-evaluate stress; the
+    // temperature-step loop records it here rather than threading it through the signature.
+    double lastProcessedTemperature = 0.0;
     void calculateSolutionTemperatureStep(double curT, double dT, unsigned int refinementCycle, int temperatureStepNumber);
     void refine_grid(double fractionToRefine, double fractionToCoarse);
     void output_results(const unsigned int cycle = 1) const;
     void process_solution(unsigned int refinementCycle, const unsigned int tempStepNum, const unsigned int iterSolverStepNum, double curT);
     void parse_cellToMaterial_data(std::string fileName);
+
+    // ----------------------------------------------------------------------------------------
+    // Boundary conditions
+    // ----------------------------------------------------------------------------------------
+    BoundaryConditionType boundaryConditionType = BoundaryConditionType::zeroDisplacement;
+
+    // Geometric face-pair labelling of the boundary. Needed only by "periodic", but harmless
+    // (and cheap) for the others, so it runs unconditionally once after the mesh is read.
+    void assignBoundaryIds();
+
+    // Fills `constraints` for the selected BC family. Called from assemble_system() on every
+    // iteration, because AffineConstraints must be rebuilt whenever it is re-closed.
+    void applyBoundaryConstraints();
+
+    // Minimal kinematic support for "freeSurface": exactly 6 scalar constraints removing the 3
+    // translations and 3 rotations, and NOTHING else -- any extra constraint would apply a real
+    // load and destroy the <sigma> = 0 property the free-surface case exists to have.
+    void constrainRigidBodyModes();
+
+    // ----------------------------------------------------------------------------------------
+    // Macroscopic strain unknowns for the periodic formulation  -- TEMPLATE, NOT IMPLEMENTED
+    // ----------------------------------------------------------------------------------------
+    // See homogenization.md sections 6 and 8 for the derivation these must match. The (n+6)
+    // system is
+    //
+    //     [ K   L  ] [ U    ]   [ F_theta ]        K = integral( B^T C B )       (n x n, sparse)
+    //     [ L^T H  ] [ Ebar ] = [ P_theta ]        L = integral( B^T C   )       (n x 6, DENSE)
+    //                                             H = integral( C       )       (6 x 6, dense)
+    //
+    // and is NEVER assembled as one matrix: the six dense rows/columns would wreck SSOR/AMG
+    // (homogenization.md section 11). Instead K keeps exactly the sparsity, symmetry and
+    // preconditioner it has today, L is six ordinary vectors and H is a 6x6 FullMatrix, and the
+    // coupling is resolved by static condensation in solve_with_zero_mean_stress().
+    //
+    // Note L and the 6-row block are transposes of one another BY MAJOR SYMMETRY OF C. Assemble
+    // them independently and check: if they do not come out transposed, something is wrong. That
+    // same symmetry is what keeps the condensed system SPD and CG applicable.
+    static constexpr unsigned int nMacroDofs = 6; // Kelvin 6-vector, matching Physics::Notation
+
+    // Assembles the three coupling objects below alongside the usual K/F_theta. Must be called
+    // with the same frozen damage state as assemble_system().
+    void assemble_macroscopic_blocks(double curTemperature);
+
+    // The 7-solve: z = K^-1 F_theta, Y = K^-1 L (6 columns, SAME matrix and preconditioner),
+    // Cbar_times_volume = H - L^T Y, then Ebar = (H - L^T Y)^-1 (P_theta - L^T z) and finally
+    // U = z - Y Ebar with no extra solve. Leaves the answer in solDisplacement/macroscopicStrain.
+    void solve_with_zero_mean_stress();
+
+    // Volume average of the stress over the RVE, by plain quadrature summation. Used both as the
+    // <sigma> = 0 residual check and (with unit macroscopic strains) to build Cbar column by
+    // column -- see homogenization.md section 8, which recommends this over forming L^T
+    // explicitly, since the constrained-vs-unconstrained L distinction is an easy silent bug.
+    SymmetricTensor<2, dim> computeAverageStress(double curTemperature) const;
+
+    // L: six right-hand-side vectors, one per Kelvin component of Ebar.
+    std::vector<Vector<double>> macroCouplingColumns;
+    // H = integral(C) over the RVE, and the homogenized stiffness that condensation produces.
+    FullMatrix<double> macroStiffnessH{nMacroDofs, nMacroDofs};
+    FullMatrix<double> homogenizedStiffness{nMacroDofs, nMacroDofs};
+    // The macroscopic strain itself: zero for every non-periodic BC family.
+    SymmetricTensor<2, dim> macroscopicStrain;
+
+    // ----------------------------------------------------------------------------------------
+    // Damage  (ported from ../uniaxialDamageTest/, where it was verified against a closed form)
+    // ----------------------------------------------------------------------------------------
+    void predict_damage_tempInc_external_solver(double curTemperature, double tempInc);
+    void predict_damage_cells_serial(double curTemperature, double tempInc,
+                                      double stressThreshold, double A_param, double m_param,
+                                      double residualTolerance);
+    void predict_damage_cells_workstream(double curTemperature, double tempInc,
+                                          double stressThreshold, double A_param, double m_param,
+                                          double residualTolerance);
+    // Per-quadrature-point damage update, shared verbatim by both paths above so the two cannot
+    // drift apart. Writes only to this cell's own quadrature data, which is what makes the
+    // threaded version safe without a copier.
+    void update_damage_on_cell(
+      const typename DoFHandler<dim>::active_cell_iterator &cell,
+      FEValues<dim> &fe_values,
+      std::vector<Tensor<2, dim>> &global_displacement_gradients,
+      double curTemperature, double tempInc,
+      double stressThreshold, double A_param, double m_param, double residualTolerance);
+
+    bool checkActivationCriteria(SymmetricTensor<2,dim> localStress);
+    double kineticResidual(SymmetricTensor<2,dim> localStress, double curOmega, double oldOmega, double tempInc);
+    double derivativeKineticResidual(SymmetricTensor<2,dim> localStress, double curOmega, double tempInc);
 
     // Plain per-point value snapshot, NOT a copy of the CellDataStorage object itself:
     // CellDataStorage's implicit copy constructor/assignment only deep-copies its
@@ -941,8 +940,6 @@ namespace StepCooling
     bool checkConvergenceCriteria(double curT,
                                     const Vector<double> &oldSolDisplacement,
                                     const DamageSnapshot &oldDamageSnapshot);
-
-
 
     ElasticityTensor<dim> elasticityTensor;
     CteTensor<dim> cteTensor;
@@ -976,9 +973,6 @@ namespace StepCooling
     const FEValuesExtractors::Vector displacement{0};
     TimerOutput timer;
 
-    PreciseDisplacementSolution<dim> preciseSolution;
-    TemperatureField<dim> temperatureField;
-    MmsBodyForce<dim> mmsBodyForce;
     ConvergenceTable convergence_table;
 
   };
@@ -1081,9 +1075,6 @@ namespace StepCooling
   {
     elasticityTensor.setFromPrm(prm);
     cteTensor.setFromPrm(prm);
-    preciseSolution.set_prm_consts(prm);
-    temperatureField.set_prm_consts(prm);
-    mmsBodyForce.set_prm_consts(prm);
     TimerOutput::Scope timer_section(timer, "Setup of system");
     const QGauss<dim> quadrature_formula( fe.degree + 1);
     const unsigned int n_q_points    = quadrature_formula.size();
@@ -1104,9 +1095,13 @@ namespace StepCooling
     solDisplacement.reinit(dof_handler.n_dofs());
     system_rhs.reinit(dof_handler.n_dofs());
 
-    constraints.clear();
-    DoFTools::make_hanging_node_constraints(dof_handler, constraints);
-    constraints.close();
+    // The sparsity pattern must be built from a constraint set that already contains every
+    // constraint that will ever couple two DoFs. Hanging nodes and Dirichlet conditions only
+    // ever eliminate rows, but PERIODICITY genuinely couples DoFs on opposite faces: leaving it
+    // out here would give a pattern with no entry for those couplings, and
+    // distribute_local_to_global() would then silently drop them. So build the real constraint
+    // set once here, purely for the pattern.
+    applyBoundaryConstraints();
 
     DynamicSparsityPattern dsp(dof_handler.n_dofs(), dof_handler.n_dofs());
     DoFTools::make_sparsity_pattern(dof_handler,
@@ -1117,28 +1112,198 @@ namespace StepCooling
 
     system_matrix.reinit(sparsity_pattern);
 
+    // L's six columns live on the same DoF numbering as the solution vector.
+    macroCouplingColumns.assign(nMacroDofs, Vector<double>(dof_handler.n_dofs()));
+    macroscopicStrain = 0;
+  }
+
+  // Label the six faces of the cube geometrically. The .msh carries no surface elements at all,
+  // so every face arrives with the default id 0 and there is nothing to inherit from the file.
+  // Called once after the mesh is read: child faces inherit their parent's boundary id, so
+  // refinement preserves this classification and it must NOT be redone per cycle.
+  template <int dim>
+  void ElasticProblem<dim>::assignBoundaryIds()
+  {
+    const double L = prm.get_double({"ModelParameters"}, "LengthOfTheBody");
+    // Loose relative to L: the tolerance only has to separate a face from the cell layer behind
+    // it, and mesh coordinates come from a text file with finite precision.
+    const double tol = 1e-8 * L;
+
+    std::array<unsigned int, 6> counts{};
+    for (const auto &cell : triangulation.active_cell_iterators())
+      for (const auto &face : cell->face_iterators())
+      {
+        if (!face->at_boundary())
+          continue;
+        const Point<dim> c = face->center();
+        if      (std::abs(c[0])     < tol) { face->set_boundary_id(BoundaryIds::xMinus); ++counts[0]; }
+        else if (std::abs(c[0] - L) < tol) { face->set_boundary_id(BoundaryIds::xPlus);  ++counts[1]; }
+        else if (std::abs(c[1])     < tol) { face->set_boundary_id(BoundaryIds::yMinus); ++counts[2]; }
+        else if (std::abs(c[1] - L) < tol) { face->set_boundary_id(BoundaryIds::yPlus);  ++counts[3]; }
+        else if (std::abs(c[2])     < tol) { face->set_boundary_id(BoundaryIds::zMinus); ++counts[4]; }
+        else if (std::abs(c[2] - L) < tol) { face->set_boundary_id(BoundaryIds::zPlus);  ++counts[5]; }
+        else
+          throw std::runtime_error(
+            "boundary face at (" + std::to_string(c[0]) + "," + std::to_string(c[1]) + "," +
+            std::to_string(c[2]) + ") lies on none of the six planes of the cube [0,L]^3 with "
+            "L = " + std::to_string(L) + " -- LengthOfTheBody does not match the mesh, or the "
+            "mesh is not the axis-aligned cube this model assumes.");
+      }
+
+    // Periodic matching needs the pairs to be the same size; catching it here beats a confusing
+    // failure inside collect_periodic_faces later.
+    for (unsigned int pair = 0; pair < 3; ++pair)
+      if (counts[2 * pair] != counts[2 * pair + 1])
+        throw std::runtime_error("boundary face counts differ across face pair " +
+                                  std::to_string(pair) + " (" +
+                                  std::to_string(counts[2 * pair]) + " vs " +
+                                  std::to_string(counts[2 * pair + 1]) +
+                                  ") -- the mesh is not periodic in that direction.");
+
+    std::cout << "Boundary faces per pair: x=" << counts[0] << ", y=" << counts[2]
+              << ", z=" << counts[4] << std::endl;
+  }
+
+  // Exactly 6 scalar constraints removing the 6 rigid-body modes of a traction-free body, and
+  // nothing more. Any additional constraint would transmit a real reaction force and so destroy
+  // the <sigma> = 0 property that makes the free-surface case a genuine free-cooling state.
+  //
+  // The standard 3-2-1 support, on three corners of the cube:
+  //   corner at (0,0,0): u_x = u_y = u_z = 0   kills the 3 translations
+  //   corner at (L,0,0): u_y = u_z = 0         kills rotation about e_z and about e_y
+  //   corner at (0,L,0): u_z = 0               kills rotation about e_x
+  // The three constrained points are not collinear, which is what makes the set independent.
+  //
+  // WARNING (conditioning): this leaves the stiffness matrix only barely positive definite --
+  // the modes it removes are removed exactly, but nothing else is stiffened. Combined with the
+  // C11/C44 ~ 4240 anisotropy of graphite this is the "floppy BC" regime measured earlier in
+  // ../uniaxialDamageTest/, where CG needed roughly 40x the iterations of a well-supported
+  // problem on the same mesh. Expect the free-surface runs to be much slower per solve than the
+  // clamped ones, and watch the reported CG iteration counts.
+  template <int dim>
+  void ElasticProblem<dim>::constrainRigidBodyModes()
+  {
+    const double L = prm.get_double({"ModelParameters"}, "LengthOfTheBody");
+    const double tol = 1e-8 * L;
+
+    // Support point, and which displacement components are fixed there.
+    struct Support { Point<dim> at; std::vector<unsigned int> components; };
+    const std::array<Support, 3> supports{{
+      { Point<dim>(0.0, 0.0, 0.0), {0, 1, 2} },  // all three translations
+      { Point<dim>(L,   0.0, 0.0), {1, 2}    },  // rotations about e_z and e_y; u_x LEFT FREE
+      { Point<dim>(0.0, L,   0.0), {2}       }   // rotation about e_x
+    }};
+    // u_x must stay free at the second support, and u_x and u_y at the third: fixing them would
+    // stop the body contracting along those axes, which is a real applied load, not a support.
+
+    std::vector<Point<dim>> supportLocations(dof_handler.n_dofs());
+    DoFTools::map_dofs_to_support_points(MappingQ1<dim>(), dof_handler, supportLocations);
+
+    std::array<std::array<bool, dim>, 3> constrained{};
+    std::vector<types::global_dof_index> dofsOnCell(fe.n_dofs_per_cell());
+    for (const auto &cell : dof_handler.active_cell_iterators())
+    {
+      cell->get_dof_indices(dofsOnCell);
+      for (unsigned int k = 0; k < fe.n_dofs_per_cell(); ++k)
+      {
+        const unsigned int component = fe.system_to_component_index(k).first;
+        const types::global_dof_index gi = dofsOnCell[k];
+        for (unsigned int s = 0; s < supports.size(); ++s)
+        {
+          if (constrained[s][component] ||
+              supportLocations[gi].distance(supports[s].at) > tol)
+            continue;
+          const auto &comps = supports[s].components;
+          if (std::find(comps.begin(), comps.end(), component) == comps.end())
+            continue;
+          if (!constraints.is_constrained(gi))
+            constraints.add_line(gi);   // homogeneous: the inhomogeneity defaults to 0
+          constrained[s][component] = true;
+        }
+      }
+    }
+
+    unsigned int nConstraints = 0;
+    for (const auto &perSupport : constrained)
+      for (unsigned int d = 0; d < dim; ++d)
+        if (perSupport[d]) ++nConstraints;
+    if (nConstraints != 6)
+      throw std::runtime_error(
+        "minimal kinematic support produced " + std::to_string(nConstraints) +
+        " constraints instead of 6 -- the three support corners were not all found as mesh "
+        "vertices. Check LengthOfTheBody against the mesh.");
+  }
+
+  // Rebuilds `constraints` from scratch for the selected BC family. Must be called before every
+  // assembly, because AffineConstraints cannot be added to once closed.
+  template <int dim>
+  void ElasticProblem<dim>::applyBoundaryConstraints()
+  {
+    constraints.clear();
+    DoFTools::make_hanging_node_constraints(dof_handler, constraints);
+
+    switch (boundaryConditionType)
+    {
+      case BoundaryConditionType::zeroDisplacement:
+      {
+        // u = 0 on the whole boundary. Kills every rigid-body mode as a side effect, so no
+        // extra support is needed. Applied per face id rather than to id 0, because
+        // assignBoundaryIds() has already relabelled everything.
+        const Functions::ZeroFunction<dim> zero(dim);
+        for (const types::boundary_id id : {BoundaryIds::xMinus, BoundaryIds::xPlus,
+                                            BoundaryIds::yMinus, BoundaryIds::yPlus,
+                                            BoundaryIds::zMinus, BoundaryIds::zPlus})
+          VectorTools::interpolate_boundary_values(dof_handler, id, zero, constraints);
+        break;
+      }
+
+      case BoundaryConditionType::freeSurface:
+      {
+        // Traction-free needs NO boundary term at all: zero traction is the natural boundary
+        // condition of the weak form, so simply not integrating anything over the boundary is
+        // exactly right. Only the rigid-body modes need removing.
+        constrainRigidBodyModes();
+        break;
+      }
+
+      case BoundaryConditionType::periodic:
+      {
+        // -----------------------------------------------------------------------------------
+        // TEMPLATE -- NOT YET IMPLEMENTED. Intended shape:
+        //
+        //   std::vector<GridTools::PeriodicFacePair<
+        //     typename DoFHandler<dim>::cell_iterator>> matchedPairs;
+        //   GridTools::collect_periodic_faces(dof_handler, BoundaryIds::xMinus,
+        //                                     BoundaryIds::xPlus, /*direction=*/0, matchedPairs);
+        //   ... same for y (direction 1) and z (direction 2) ...
+        //   DoFTools::make_periodicity_constraints<dim, dim>(matchedPairs, constraints);
+        //
+        // These are HOMOGENEOUS constraints on the fluctuation u_periodic. Ebar does NOT enter
+        // here: it is carried as six separate unknowns and enters assembly as an eigenstrain
+        // (homogenization.md section 8), which is why no inhomogeneity is needed and why the
+        // existing thermal-load code path can be reused verbatim.
+        //
+        // Then pin ONE vertex (3 components) to remove the rigid translations. Rotations are
+        // already excluded, because a rigid rotation field is not periodic -- so three
+        // constraints is exactly enough and pinning more would apply a real load.
+        // -----------------------------------------------------------------------------------
+        throw std::runtime_error(
+          "BoundaryConditions/Type = 'periodic' is not implemented yet. Use 'zeroDisplacement' "
+          "or 'freeSurface'. See applyBoundaryConstraints(), assemble_macroscopic_blocks() and "
+          "solve_with_zero_mean_stress() for the templates, and homogenization.md for the "
+          "derivation they must implement.");
+      }
+    }
+
+    constraints.close();
   }
 
   template <int dim>
   void ElasticProblem<dim>::assemble_system(double curTemperature)
   {
     TimerOutput::Scope timer_section(timer, "Assemble system");
-    constraints.clear();
-    DoFTools::make_hanging_node_constraints(dof_handler, constraints);
-    preciseSolution.set_current_temperature(curTemperature);
-    temperatureField.set_current_temperature(curTemperature);
-    mmsBodyForce.set_current_temperature(curTemperature);
 
-    // Full Dirichlet data from the manufactured solution on every face. All faces carry the mesh
-    // default id 0 (the .msh has no surface markers at all), so one call covers the boundary --
-    // and with the whole boundary prescribed there are no rigid-body modes left to pin.
-    auto prescribed_displacement = MmsBoundaryDisplacementFunction<dim>(preciseSolution);
-    VectorTools::interpolate_boundary_values(dof_handler,
-                                             BoundaryIds::allFaces,
-                                             prescribed_displacement,
-                                             constraints);
-
-    constraints.close();
+    applyBoundaryConstraints();
 
     // AffineConstraints::distribute_local_to_global() ADDS local contributions into
     // system_matrix/system_rhs rather than overwriting them. assemble_system() is called
@@ -1178,9 +1343,11 @@ namespace StepCooling
     std::vector<double> JxW_q(n_q_points);
     std::vector<std::vector<SymmetricTensor<2,dim>>> shapeGradSymm(
       dofs_per_cell, std::vector<SymmetricTensor<2,dim>>(n_q_points));
-    std::vector<double> deltaT_q(n_q_points);
-    std::vector<Tensor<1,dim>> bodyForce_q(n_q_points);
-    Vector<double> bodyForceValue(dim);
+
+    // The RVE cools uniformly, so the temperature rise is ONE scalar for the whole domain, not
+    // a field. It is negative on cooling.
+    const double T0 = prm.get_double({"ModelParameters"}, "InitialTemperature");
+    const double deltaT = curTemperature - T0;
 
     for (const auto &cell : dof_handler.active_cell_iterators())
     {
@@ -1192,6 +1359,10 @@ namespace StepCooling
       cell_matrix = 0;
       cell_rhs    = 0;
 
+      // Both material tensors are defined in the crystallite's own frame and rotated into the
+      // global frame per cell. This is where the grain-to-grain mismatch actually enters: two
+      // neighbouring cells with different orientations get different global C and different
+      // global alpha from identical local data.
       const SymmetricTensor<2,dim> localcteTensor = cteTensor.getcteTensor(curTemperature);
       const SymmetricTensor<2,dim> globalcteTensor =
         Physics::Transformations::basis_transformation(localcteTensor, rotTensorLocalToGlobal);
@@ -1199,17 +1370,10 @@ namespace StepCooling
       for (const unsigned int q : fe_values.quadrature_point_indices())
       {
         JxW_q[q] = fe_values.JxW(q);
-        // C is evaluated at the scalar step temperature, NOT at T(x_q): the manufactured body
-        // force was derived assuming a spatially CONSTANT C, which holds because the
-        // *_functionOfTemperature entries are 1.0 (checked at startup in run()).
         const SymmetricTensor<4,dim> localElasticTensor =
           elasticityTensor.getElasticityTensor(cell_damage[q]->damage, curTemperature);
         globalElasticTensor_q[q] =
           Physics::Transformations::basis_transformation(localElasticTensor, rotTensorLocalToGlobal);
-        const Point<dim> &qp = fe_values.quadrature_point(q);
-        deltaT_q[q] = temperatureField.temperature_rise(qp);
-        mmsBodyForce.vector_value(qp, bodyForceValue);
-        for (unsigned int d = 0; d < dim; ++d) bodyForce_q[q][d] = bodyForceValue(d);
       }
 
       for (const unsigned int i : fe_values.dof_indices())
@@ -1223,13 +1387,15 @@ namespace StepCooling
             cell_matrix(i, j) +=
               (shapeGradSymm[i][q] * (globalElasticTensor_q[q] * shapeGradSymm[j][q])) * JxW_q[q];
 
-        // Thermal load uses the LOCAL temperature rise T(x_q)-T_0, plus the manufactured
-        // body force. With a uniform rise the thermal term would integrate to zero against every
-        // admissible test function -- see the file header.
+        // Thermal load only -- there is NO body force in this model. Unlike the uniform-
+        // temperature MMS case (where this term integrated to zero against every admissible
+        // test function because C and alpha were spatially constant), here C and alpha jump
+        // from grain to grain, so the integrand is discontinuous and the term does NOT vanish.
+        // That discontinuity is precisely the physics: it is the mismatch load.
         for (const unsigned int q : fe_values.quadrature_point_indices())
           cell_rhs(i) +=
-            (((shapeGradSymm[i][q] * (globalElasticTensor_q[q] * globalcteTensor)) * deltaT_q[q])
-             + bodyForce_q[q] * fe_values[displacement].value(i, q)) * JxW_q[q];
+            ((shapeGradSymm[i][q] * (globalElasticTensor_q[q] * globalcteTensor)) * deltaT)
+            * JxW_q[q];
       }
       cell->get_dof_indices(local_dof_indices);
       constraints.distribute_local_to_global(cell_matrix, cell_rhs, local_dof_indices, system_matrix, system_rhs);
@@ -1246,6 +1412,9 @@ namespace StepCooling
     const unsigned int dofs_per_cell = fe.n_dofs_per_cell();
     const UpdateFlags flags =
       update_values | update_gradients | update_quadrature_points | update_JxW_values;
+
+    const double T0 = prm.get_double({"ModelParameters"}, "InitialTemperature");
+    const double deltaT = curTemperature - T0; // uniform over the RVE; negative on cooling
 
     auto worker = [&](const typename DoFHandler<dim>::active_cell_iterator &cell,
                       AssemblyScratch::Scratch<dim> &scratch,
@@ -1274,10 +1443,6 @@ namespace StepCooling
           elasticityTensor.getElasticityTensor(cell_damage[q]->damage, curTemperature);
         scratch.globalElasticTensor_q[q] =
           Physics::Transformations::basis_transformation(localElasticTensor, rotTensorLocalToGlobal);
-        const Point<dim> &qp = fe_values.quadrature_point(q);
-        scratch.deltaT_q[q] = temperatureField.temperature_rise(qp);
-        mmsBodyForce.vector_value(qp, scratch.bodyForceValue);
-        for (unsigned int d = 0; d < dim; ++d) scratch.bodyForce_q[q][d] = scratch.bodyForceValue(d);
       }
 
       for (const unsigned int i : fe_values.dof_indices())
@@ -1292,11 +1457,11 @@ namespace StepCooling
               (scratch.shapeGradSymm[i][q] *
                (scratch.globalElasticTensor_q[q] * scratch.shapeGradSymm[j][q])) * scratch.JxW_q[q];
 
+        // Thermal load only -- no body force in this model (see the serial path).
         for (const unsigned int q : fe_values.quadrature_point_indices())
           copy.cell_rhs(i) +=
-            (((scratch.shapeGradSymm[i][q] * (scratch.globalElasticTensor_q[q] * globalcteTensor)) *
-              scratch.deltaT_q[q])
-             + scratch.bodyForce_q[q] * fe_values[displacement].value(i, q)) * scratch.JxW_q[q];
+            ((scratch.shapeGradSymm[i][q] * (scratch.globalElasticTensor_q[q] * globalcteTensor))
+             * deltaT) * scratch.JxW_q[q];
       }
       cell->get_dof_indices(copy.local_dof_indices);
     };
@@ -1369,6 +1534,348 @@ namespace StepCooling
   }
 
   template <int dim>
+  bool ElasticProblem<dim>::checkActivationCriteria(SymmetricTensor<2,dim> localStress)
+  {
+    double stressThreshold = prm.get_double({"MaterialParameters", "DamageParameters"}, "StressThreshold");
+    return localStress[dim-1][dim-1] > stressThreshold;
+  }
+
+  // Backward-Euler residual of the Rabotnov-type kinetic equation
+  //   domega/ds = A * (macaulay(sigma_zz - sigma_th)/sigma_th)^m * (1/(1-omega))^m
+  // discretized as omega_new - omega_old = A*(...)^m * tempInc, where s = T_0 - T is the
+  // (positive, increasing) pseudo-time and tempInc is its step magnitude. sigma_zz is the
+  // LOCAL-frame c-axis normal stress -- which is why the per-grain orientation matters here and
+  // not only in assembly.
+  //
+  // Two corrections carried over from the debugging in ../mmsSandbox, both easy to reintroduce:
+  //  - actingStress is Macaulay-clamped rather than throwing: the root search evaluates the
+  //    residual across a whole bracket, including omega values where the stress is subcritical,
+  //    so a hard throw there would abort on perfectly legitimate probe evaluations. Below
+  //    threshold the physical damage rate is genuinely zero, which the clamp expresses directly.
+  //  - actingStress is normalized by stressThreshold, matching the kinetic law as written above.
+  //    It previously was not, while derivativeKineticResidual's power term WAS -- so the
+  //    residual and its own derivative disagreed by a factor of stressThreshold^m.
+  template <int dim>
+  double ElasticProblem<dim>::kineticResidual(SymmetricTensor<2,dim> localStress, double curOmega, double oldOmega, double tempInc)
+  {
+    double stressThreshold = prm.get_double({"MaterialParameters", "DamageParameters"}, "StressThreshold");
+    double actingStress = std::max(localStress[dim-1][dim-1] - stressThreshold, 0.0);
+    double a_kineticParam = prm.get_double({"MaterialParameters", "DamageParameters"}, "a_kineticParam");
+    double m_kineticParam = prm.get_double({"MaterialParameters", "DamageParameters"}, "m_kineticParam");
+    return curOmega - oldOmega
+           - a_kineticParam * std::pow(actingStress / stressThreshold / (1-curOmega), m_kineticParam) * tempInc;
+  };
+
+  template <int dim>
+  double ElasticProblem<dim>::derivativeKineticResidual(SymmetricTensor<2,dim> localStress, double curOmega, double tempInc)
+  {
+    double stressThreshold = prm.get_double({"MaterialParameters", "DamageParameters"}, "StressThreshold");
+    double a_kineticParam = prm.get_double({"MaterialParameters", "DamageParameters"}, "a_kineticParam");
+    double m_kineticParam = prm.get_double({"MaterialParameters", "DamageParameters"}, "m_kineticParam");
+    double actingStress = std::max(localStress[dim-1][dim-1] - stressThreshold, 0.0);
+    return 1 - a_kineticParam * m_kineticParam * tempInc
+               * std::pow(actingStress / stressThreshold, m_kineticParam)
+               / std::pow(1 - curOmega, m_kineticParam + 1);
+  }
+
+  template <int dim>
+  void ElasticProblem<dim>::predict_damage_tempInc_external_solver(double curTemperature, double tempInc)
+  {
+    TimerOutput::Scope timer_section(timer, "Predict damage increment");
+
+    // Kinetic-equation constants, read once rather than per quadrature point (this loop is the
+    // dominant cost in the timing report), then passed down to the per-cell worker.
+    const double stressThreshold = prm.get_double({"MaterialParameters", "DamageParameters"}, "StressThreshold");
+    const double A_param = prm.get_double({"MaterialParameters", "DamageParameters"}, "a_kineticParam");
+    const double m_param = prm.get_double({"MaterialParameters", "DamageParameters"}, "m_kineticParam");
+    const double residualTolerance = prm.get_double({"SolverParameters"}, "KineticAlgebraicSolverTolerance");
+
+    if (prm.get_bool({"ParallelizationParameters"}, "UseWorkStream"))
+      predict_damage_cells_workstream(curTemperature, tempInc, stressThreshold, A_param,
+                                       m_param, residualTolerance);
+    else
+      predict_damage_cells_serial(curTemperature, tempInc, stressThreshold, A_param,
+                                   m_param, residualTolerance);
+  }
+
+  // The per-cell damage update, shared verbatim by the serial and threaded paths so they cannot
+  // drift apart. Writes only into this cell's own quadrature-point data -- no other cell reads or
+  // writes it -- which is what makes the threaded version safe with no copier and no locking.
+  template <int dim>
+  void ElasticProblem<dim>::update_damage_on_cell(
+    const typename DoFHandler<dim>::active_cell_iterator &cell,
+    FEValues<dim> &fe_values,
+    std::vector<Tensor<2, dim>> &global_displacement_gradients,
+    double curTemperature, double tempInc,
+    double stressThreshold, double A_param, double m_param, double residualTolerance)
+  {
+    SymmetricTensor<2, dim> globalStrain;
+    SymmetricTensor<2, dim> localStrain;
+    SymmetricTensor<2, dim> localStress;
+
+    auto cell_damage = damageInQuadraturePoints.get_data(cell);
+    const Tensor<2, dim> rotTensorGlobalToLocal = getRotTensorGlobalToLocal(cell->material_id());
+    fe_values.reinit(cell);
+    const auto &qPoints = fe_values.get_quadrature_points();
+    const unsigned int n_q_points = fe_values.get_quadrature().size();
+
+    // One call fills the gradients at ALL quadrature points, rather than recomputing the whole
+    // set once per point inside the q loop below.
+    fe_values[displacement].get_function_gradients(solDisplacement, global_displacement_gradients);
+
+    for (unsigned int q = 0; q < n_q_points; q++)
+    {
+        Point<dim> curQpoint = qPoints[q];
+        double old_damage = cell_damage[q]->old_damage;
+        double cur_damage = cell_damage[q]->damage;
+        // Total strain = macroscopic + fluctuation. macroscopicStrain is identically zero for
+        // every BC family except "periodic", so this reduces to sym(grad u) today and stays
+        // correct once the macroscopic unknowns are switched on.
+        globalStrain = dealii::symmetrize(global_displacement_gradients[q]) + macroscopicStrain;
+        localStrain = Physics::Transformations::basis_transformation(globalStrain, rotTensorGlobalToLocal);
+        localStress = getLocalStressTensor(localStrain, cur_damage, curTemperature);
+
+        // The driving stress is the REAL stress computed from the current numerical damage, so
+        // the negative-feedback loop is closed: growing damage lowers C33 -> lowers sigma_zz ->
+        // slows further growth.
+        const double lowerBound = old_damage; // damage is non-decreasing within a load step
+        const double upperBound = 0.999;      // stay clear of the (1-omega)->0 singularity
+        auto residualOnly = [&](double omega) -> double
+        {
+          // Stress is re-evaluated at each trial omega, so the root search sees the true
+          // coupled equation rather than a stress frozen at the previous iterate.
+          const SymmetricTensor<2,dim> trialStress = getLocalStressTensor(localStrain, omega, curTemperature);
+          return kineticResidual(trialStress, omega, old_damage, tempInc);
+        };
+
+        // The damage term A*(ratio)^m*(1-omega)^-m is convex in omega whenever actingStress>0,
+        // making the residual CONCAVE (single interior maximum, up to two roots) -- not safe for
+        // raw Newton from an arbitrary guess. Locate that maximum analytically rather than
+        // searching for it, then bracket-and-solve on whichever side actually contains a sign
+        // change, preferring the smaller root (the branch continuous with old_damage).
+        //
+        // NOTE: the closed form below is specific to this Rabotnov-type power law -- it solves
+        // d/domega[A*(ratio)^m*(1-omega)^-m * tempInc] = 1 analytically. A different kinetic law
+        // would need its own derivation, or a law-agnostic fallback (numeric maximization, or a
+        // coarse scan for sign changes). Worth revisiting if a second law is ever added.
+        const double actingStressAtPoint =
+          std::max(getLocalStressTensor(localStrain, old_damage, curTemperature)[dim-1][dim-1] - stressThreshold, 0.0);
+        double newDamage, lo = lowerBound, hi = upperBound;
+        bool rootBracketed = true;
+        boost::uintmax_t bisectItersUsed = 0;
+
+        if (actingStressAtPoint <= 0.0)
+        {
+          // Subcritical: no damage growth this step, and the residual reduces to
+          // omega - old_damage whose root is exactly old_damage.
+          newDamage = old_damage;
+        }
+        else
+        {
+          const double omega_max = std::clamp(
+            1.0 - std::pow(m_param * A_param * std::pow(actingStressAtPoint / stressThreshold, m_param) * tempInc,
+                            1.0 / (m_param + 1.0)),
+            lowerBound, upperBound);
+          const double residAtLower = residualOnly(lowerBound);
+          const double residAtMax = residualOnly(omega_max);
+          if (omega_max > lowerBound && (residAtLower < 0.0) != (residAtMax < 0.0))
+          { lo = lowerBound; hi = omega_max; }
+          else if (omega_max < upperBound && (residAtMax < 0.0) != (residualOnly(upperBound) < 0.0))
+          { lo = omega_max; hi = upperBound; }
+          else
+            rootBracketed = false; // no sign change anywhere -- no root in [lowerBound, upperBound]
+
+          if (rootBracketed)
+          {
+            // toms748_solve: bracket-guaranteed, superlinear. Tight x-tolerance here -- an
+            // x-tolerance equal to residualTolerance isn't the same thing as a residual
+            // tolerance near the (1-omega)^-m singularity, so the residual check below is the
+            // real acceptance criterion.
+            boost::uintmax_t bisectIters = 200;
+            auto bracket = boost::math::tools::toms748_solve(residualOnly, lo, hi,
+              [](double a, double b) { return std::abs(b - a) < 1e-12; }, bisectIters);
+            bisectItersUsed = bisectIters;
+            newDamage = 0.5 * (bracket.first + bracket.second);
+          }
+          else
+            newDamage = lowerBound;
+        }
+
+        const double residualAtSolution = residualOnly(newDamage);
+        if (!rootBracketed || std::abs(residualAtSolution) > residualTolerance)
+          throw std::runtime_error("Kinetic equation root search did not converge (residual=" +
+                                    std::to_string(residualAtSolution) +
+                                    ", rootBracketed=" + std::to_string(rootBracketed) +
+                                    ") at point " +
+                                    std::to_string(curQpoint[0]) + "," + std::to_string(curQpoint[1]) +
+                                    "," + std::to_string(curQpoint[2]) +
+                                    " [old_damage=" + std::to_string(old_damage) +
+                                    " newDamage=" + std::to_string(newDamage) +
+                                    " T=" + std::to_string(curTemperature) +
+                                    " tempInc=" + std::to_string(tempInc) +
+                                    " actingStress=" + std::to_string(actingStressAtPoint) +
+                                    " bracket=[" + std::to_string(lo) + "," + std::to_string(hi) + "]" +
+                                    " residAtBracket=[" + std::to_string(residualOnly(lo)) + "," +
+                                    std::to_string(residualOnly(hi)) + "]" +
+                                    " bisectItersUsed=" + std::to_string(bisectItersUsed) + "]");
+        cell_damage[q]->damage = newDamage;
+    }
+  }
+
+  // Reference single-threaded loop, kept as the correctness/timing baseline.
+  template <int dim>
+  void ElasticProblem<dim>::predict_damage_cells_serial(
+    double curTemperature, double tempInc,
+    double stressThreshold, double A_param, double m_param, double residualTolerance)
+  {
+    const QGauss<dim> quadrature_formula(fe.degree + 1);
+    FEValues<dim> fe_values(fe, quadrature_formula,
+                            update_values | update_gradients | update_quadrature_points);
+    std::vector<Tensor<2, dim>> global_displacement_gradients(quadrature_formula.size());
+
+    for (const auto &cell : dof_handler.active_cell_iterators())
+      update_damage_on_cell(cell, fe_values, global_displacement_gradients, curTemperature,
+                            tempInc, stressThreshold, A_param, m_param, residualTolerance);
+  }
+
+  // Multi-threaded loop. No copier is needed (see update_damage_on_cell): each cell owns its
+  // quadrature data outright. Note that update_damage_on_cell can throw when the root search
+  // fails; WorkStream propagates exceptions out of the worker, so that diagnostic still surfaces
+  // rather than being swallowed -- though with several cells in flight the failing cell is not
+  // necessarily the first one that would have failed serially.
+  template <int dim>
+  void ElasticProblem<dim>::predict_damage_cells_workstream(
+    double curTemperature, double tempInc,
+    double stressThreshold, double A_param, double m_param, double residualTolerance)
+  {
+    const QGauss<dim> quadrature_formula(fe.degree + 1);
+    const UpdateFlags flags = update_values | update_gradients | update_quadrature_points;
+
+    auto worker = [&](const typename DoFHandler<dim>::active_cell_iterator &cell,
+                      DamageScratch::Scratch<dim> &scratch,
+                      DamageScratch::Copy &)
+    {
+      update_damage_on_cell(cell, scratch.fe_values, scratch.global_displacement_gradients,
+                            curTemperature, tempInc, stressThreshold, A_param, m_param,
+                            residualTolerance);
+    };
+    auto copier = [](const DamageScratch::Copy &) {};
+
+    WorkStream::run(dof_handler.begin_active(), dof_handler.end(), worker, copier,
+                    DamageScratch::Scratch<dim>(fe, quadrature_formula, flags),
+                    DamageScratch::Copy());
+  }
+
+  // ============================================================================================
+  // Macroscopic strain unknowns -- TEMPLATE for the periodic formulation
+  // ============================================================================================
+
+  // Volume average of the stress over the RVE. Plain quadrature summation of the same sigma the
+  // damage update sees, so the two can never disagree about what the stress is.
+  //
+  // For "freeSurface" this should come out at ~0 to solver tolerance, since traction-free
+  // boundaries give <sigma> = 0 identically (homogenization.md section 13). That makes it a
+  // genuine correctness check and not just a diagnostic -- if it does not, either the boundary
+  // treatment or the minimal support is wrong. For "zeroDisplacement" it will be large and
+  // triaxial, which is the whole reason that case is not free cooling.
+  template <int dim>
+  SymmetricTensor<2, dim> ElasticProblem<dim>::computeAverageStress(double curTemperature) const
+  {
+    const QGauss<dim> quadrature_formula(fe.degree + 1);
+    FEValues<dim> fe_values(fe, quadrature_formula,
+                            update_gradients | update_JxW_values);
+    std::vector<Tensor<2, dim>> gradients(quadrature_formula.size());
+
+    SymmetricTensor<2, dim> integratedStress;
+    double volume = 0.0;
+
+    for (const auto &cell : dof_handler.active_cell_iterators())
+    {
+      fe_values.reinit(cell);
+      fe_values[displacement].get_function_gradients(solDisplacement, gradients);
+      const auto cell_damage = damageInQuadraturePoints.get_data(cell);
+      const Tensor<2, dim> rotGlobalToLocal =
+        rotmatOrientationCell[cell->material_id() - 1];
+      const Tensor<2, dim> rotLocalToGlobal = transpose(rotGlobalToLocal);
+
+      for (unsigned int q = 0; q < quadrature_formula.size(); ++q)
+      {
+        const SymmetricTensor<2, dim> globalStrain =
+          dealii::symmetrize(gradients[q]) + macroscopicStrain;
+        const SymmetricTensor<2, dim> localStrain =
+          Physics::Transformations::basis_transformation(globalStrain, rotGlobalToLocal);
+        const double T0 = prm.get_double({"ModelParameters"}, "InitialTemperature");
+        const SymmetricTensor<2, dim> localStress =
+          elasticityTensor.getElasticityTensor(cell_damage[q]->damage, curTemperature) *
+          (localStrain - cteTensor.getcteTensor(curTemperature) * (curTemperature - T0));
+        integratedStress +=
+          Physics::Transformations::basis_transformation(localStress, rotLocalToGlobal) *
+          fe_values.JxW(q);
+        volume += fe_values.JxW(q);
+      }
+    }
+    return integratedStress / volume;
+  }
+
+  // --------------------------------------------------------------------------------------------
+  // NOT IMPLEMENTED. Fill in from homogenization.md section 6.
+  //
+  // Assembles, alongside the usual K and F_theta:
+  //
+  //   macroCouplingColumns[k]  =  L's k-th column  =  integral over Omega of B^T C I^(k) dV
+  //                               i.e. exactly the existing thermal-load assembly with the
+  //                               eigenstrain alpha*dT replaced by the unit Kelvin tensor I^(k).
+  //                               Distribute through the SAME constraints as the RHS, using
+  //                               constraints.distribute_local_to_global(cell_rhs, dofs, column).
+  //
+  //   macroStiffnessH          =  H  =  integral over Omega of C dV, a plain 6x6 volume integral
+  //                               of the rotated global C in Kelvin notation. NOT touched by
+  //                               constraints -- it involves no shape functions at all.
+  //
+  // Note the six columns are the eigenstrain path re-used six times, which is why splitting the
+  // thermal load out of the (i,j) loop above was worth doing.
+  // --------------------------------------------------------------------------------------------
+  template <int dim>
+  void ElasticProblem<dim>::assemble_macroscopic_blocks(double /*curTemperature*/)
+  {
+    throw std::runtime_error(
+      "assemble_macroscopic_blocks() is a template and not implemented yet -- see "
+      "homogenization.md section 6 for the blocks it must build.");
+  }
+
+  // --------------------------------------------------------------------------------------------
+  // NOT IMPLEMENTED. Fill in from homogenization.md section 6, step by step:
+  //
+  //   1. z = K^-1 F_theta                                     1 CG solve
+  //   2. Y_k = K^-1 macroCouplingColumns[k], k = 0..5         6 CG solves, SAME matrix and
+  //                                                           SAME preconditioner -- build the
+  //                                                           preconditioner once, outside.
+  //   3. homogenizedStiffness = H - L^T Y                     6x6, and it must come out
+  //                                                           SYMMETRIC and positive definite.
+  //                                                           Check it: that is a free and very
+  //                                                           sharp correctness test (section 4).
+  //   4. Ebar = homogenizedStiffness^-1 (P_theta - L^T z)     6x6 dense solve, e.g.
+  //                                                           FullMatrix::gauss_jordan()
+  //   5. U = z - Y Ebar                                       NO extra solve
+  //
+  // Then set macroscopicStrain from Ebar (Kelvin 6-vector -> SymmetricTensor via
+  // Physics::Notation::Kelvin::to_tensor) and solDisplacement from U.
+  //
+  // Validate with the uniform-orientation smoke test FIRST (homogenization.md section 9): give
+  // every grain the same orientation and the answer is known in closed form -- Cbar = C exactly,
+  // Ebar = alpha*dT, u_periodic identically 0, and sigma identically 0 pointwise. That single
+  // test exercises periodicity, the pin, the eigenstrain path, all seven solves and the recovery
+  // at once, against an answer that includes zero stress.
+  // --------------------------------------------------------------------------------------------
+  template <int dim>
+  void ElasticProblem<dim>::solve_with_zero_mean_stress()
+  {
+    throw std::runtime_error(
+      "solve_with_zero_mean_stress() is a template and not implemented yet -- see "
+      "homogenization.md section 6 for the 7-solve algorithm it must implement.");
+  }
+
+  template <int dim>
   void ElasticProblem<dim>::output_results(const unsigned int cycle) const
   {
     const QGauss<dim> quadrature_formula(fe.degree + 1);
@@ -1422,6 +1929,51 @@ namespace StepCooling
     }
     data_out.add_data_vector(cell_damage, "damage");
 
+    // Local-frame sigma_zz -- the c-axis normal stress that actually drives the kinetic law --
+    // plus the sign indicator the study is about. Reported per cell (one grain at the current
+    // resolution), averaged over the cell's quadrature points.
+    Vector<double> cell_sigma_zz_local(triangulation.n_active_cells());
+    Vector<double> cell_tension_flag(triangulation.n_active_cells());
+    Vector<double> cell_hydrostatic(triangulation.n_active_cells());
+    Vector<double> cell_c_axis_z(triangulation.n_active_cells());
+
+    const double T0 = prm.get_double({"ModelParameters"}, "InitialTemperature");
+    const double curT = lastProcessedTemperature;
+    std::vector<Tensor<2, dim>> gradients(n_q_points);
+
+    for (const auto &cell : dof_handler.active_cell_iterators())
+    {
+      fe_values.reinit(cell);
+      fe_values[displacement].get_function_gradients(solDisplacement, gradients);
+      const auto qp_damage = damageInQuadraturePoints.get_data(cell);
+      const Tensor<2, dim> rotGlobalToLocal = rotmatOrientationCell[cell->material_id() - 1];
+
+      double sigmaZZ = 0.0, hydro = 0.0;
+      for (unsigned int q = 0; q < n_q_points; ++q)
+      {
+        const SymmetricTensor<2, dim> globalStrain =
+          dealii::symmetrize(gradients[q]) + macroscopicStrain;
+        const SymmetricTensor<2, dim> localStrain =
+          Physics::Transformations::basis_transformation(globalStrain, rotGlobalToLocal);
+        const SymmetricTensor<2, dim> localStress =
+          elasticityTensor.getElasticityTensor(qp_damage[q]->damage, curT) *
+          (localStrain - cteTensor.getcteTensor(curT) * (curT - T0));
+        sigmaZZ += localStress[dim-1][dim-1];
+        hydro   += trace(localStress) / dim;
+      }
+      const unsigned int idx = cell->active_cell_index();
+      cell_sigma_zz_local[idx] = sigmaZZ / n_q_points;
+      cell_hydrostatic[idx]    = hydro / n_q_points;
+      cell_tension_flag[idx]   = (cell_sigma_zz_local[idx] > 0.0) ? 1.0 : -1.0;
+      // |c_z| identifies which grains have their weak c-axis aligned with the global z axis --
+      // useful for reading the stress map against the orientation field that produced it.
+      cell_c_axis_z[idx] = std::abs(rotGlobalToLocal[dim-1][dim-1]);
+    }
+    data_out.add_data_vector(cell_sigma_zz_local, "sigma_zz_local");
+    data_out.add_data_vector(cell_hydrostatic, "hydrostatic_stress");
+    data_out.add_data_vector(cell_tension_flag, "tension_indicator");
+    data_out.add_data_vector(cell_c_axis_z, "c_axis_z_component");
+
     data_out.build_patches();
 
     std::ofstream output("solDisplacement-" + std::to_string(cycle) + ".vtk");
@@ -1442,29 +1994,16 @@ namespace StepCooling
       prm.get_integer({"ParallelizationParameters"}, "NumberOfThreads");
     if (requestedThreads > 0)
       MultithreadInfo::set_thread_limit(requestedThreads);
-    // The manufactured body force was derived assuming C and alpha are spatially CONSTANT,
-    // which holds only while the *_functionOfTemperature entries are 1.0 -- with a spatially
-    // varying temperature field, any real temperature dependence would make them vary in space
-    // and silently invalidate the manufactured source. Fail loudly instead.
-    {
-      // setFromPrm() must run first: the material functors are only initialized in
-      // setup_system(), which has not been called yet at this point.
-      elasticityTensor.setFromPrm(prm);
-      cteTensor.setFromPrm(prm);
-      const double Tlo = prm.get_double({"ModelParameters"}, "FinalTemperature");
-      const double Thi = prm.get_double({"ModelParameters"}, "InitialTemperature");
-      const SymmetricTensor<4, dim> Clo = elasticityTensor.getElasticityTensor(0.0, Tlo);
-      const SymmetricTensor<4, dim> Chi = elasticityTensor.getElasticityTensor(0.0, Thi);
-      const SymmetricTensor<2, dim> alo = cteTensor.getcteTensor(Tlo);
-      const SymmetricTensor<2, dim> ahi = cteTensor.getcteTensor(Thi);
-      if ((Clo - Chi).norm() > 1e-8 * Chi.norm() || (alo - ahi).norm() > 1e-8 * ahi.norm())
-        throw std::runtime_error(
-          "Elastic moduli or CTE vary with temperature (a *_functionOfTemperature entry is not "
-          "1.0). This MMS uses a spatially varying temperature field, so that would make C or "
-          "alpha vary in space, which the manufactured body force does NOT account for. Set the "
-          "temperature-dependence functions to 1.0, or re-derive the body force.");
-    }
+    boundaryConditionType =
+      parseBoundaryConditionType(prm.get({"BoundaryConditions"}, "Type"));
 
+    // setFromPrm() must run before anything asks for a material tensor: the temperature-
+    // dependence functors are only built there.
+    elasticityTensor.setFromPrm(prm);
+    cteTensor.setFromPrm(prm);
+
+    std::cout << "Boundary conditions: " << boundaryConditionTypeName(boundaryConditionType)
+              << std::endl;
     std::cout << "Threading: "
               << (prm.get_bool({"ParallelizationParameters"}, "UseWorkStream")
                     ? "WorkStream" : "serial (reference path)")
@@ -1477,50 +2016,77 @@ namespace StepCooling
     grid_in.attach_triangulation(this->triangulation);
     std::ifstream input_file(mshFileName);
     auto mshStream = parseMSHandPrepareStream(mshFileName);
-    grid_in.read_msh(mshStream); //it will read only one phsycial tag, related to id of cell (so u need to use special map material[cellId] for material, rotation have direct relation to cell id)
+    grid_in.read_msh(mshStream);
     parse_cellToMaterial_data(cellToMaterialFileName);
 
-    //here manually setting one main orientation for all cells, in general case it should be read from msh file and pushed in
-    //it is done for test purposes, to check if damage is predicted correctly for one orientation
-    Tensor<1, 3> axis;
-    axis[0] = 0.0;
-    axis[1] = 1.0;
-    axis[2] = 0.0;
+    // --------------------------------------------------------------------------------------
+    // One grain per mesh cell, each with its own random c-axis orientation.
+    //
+    // Grain identity is carried in material_id. Two reasons that is the right home for it
+    // rather than a side table: deal.II PROPAGATES material_id to children on refinement, so
+    // grain identity survives refine_global() with no bookkeeping at all; and every existing
+    // lookup (getRotTensorGlobalToLocal) already goes through it.
+    //
+    // material_id is 1-based because getRotTensorGlobalToLocal() indexes
+    // rotmatOrientationCell[material_id - 1].
+    //
+    // parseMSHandPrepareStream() has already pushed whatever orientation the mesh file's
+    // $ElsetOrientations section carries. That is the right source once a real Neper morphology
+    // is used (step 5 of the plan), but here the grains ARE the cells and the orientations are
+    // generated, so the parsed list must be cleared first. Not clearing it was the mechanism of
+    // a real bug in an earlier run: every cell had material_id 1, so all of them silently used
+    // the mesh file's orientation at index 0 rather than the intended one.
+    // --------------------------------------------------------------------------------------
+    const unsigned int orientationSeed =
+      prm.get_integer({"BoundaryConditions"}, "OrientationSeed");
+    std::mt19937_64 rng(orientationSeed);
 
-    const double angle = numbers::PI / 2.0 * 0;
-
-    auto rotation_matrix = Physics::Transformations::Rotations::rotation_matrix_3d(axis, angle);
-
-    // parseMSHandPrepareStream() (above) already pushed whatever real crystallite orientation
-    // the mesh file's $ElsetOrientations section carries. Since every cell's material_id is 1,
-    // getRotTensorGlobalToLocal(1) resolves to rotmatOrientationCell[0] -- so without clearing
-    // here, that mesh-file orientation (not the identity this test intends) is what actually
-    // gets used, silently. Clear so the manual override below lands at index 0 as intended.
     rotmatOrientationCell.clear();
-    rotmatOrientationCell.push_back(rotation_matrix);
-
-    // getRotTensorGlobalToLocal indexes rotmatOrientationCell[material_id - 1] with no bounds
-    // checking of its own (a plain std::vector::operator[]) -- an out-of-range material_id is
-    // silent undefined behavior in a Release build, not a caught error. This is exactly the
-    // mechanism behind a real bug found and fixed in this run (parseMSHandPrepareStream() had
-    // already pushed the mesh file's real crystallite orientation at index 0 before the manual
-    // override above; every cell's material_id happens to be 1, so that mesh-file orientation
-    // -- not the intended identity -- was silently what got used). Check eagerly here so any
-    // future mismatch (e.g. a multi-material mesh not matched by rotmatOrientationCell's size)
-    // fails loudly instead of reading garbage.
+    rotmatOrientationCell.reserve(triangulation.n_active_cells());
+    types::material_id cellCounter = 0;
     for (const auto &cell : triangulation.active_cell_iterators())
     {
-      const auto materialId = cell->material_id();
-      if (materialId < 1 || materialId > rotmatOrientationCell.size())
-        throw std::runtime_error("cell material_id " + std::to_string(materialId) +
-                                  " is out of range for rotmatOrientationCell (size " +
-                                  std::to_string(rotmatOrientationCell.size()) + ")");
+      cell->set_material_id(++cellCounter); // 1-based by the convention above
+      rotmatOrientationCell.push_back(randomOrientationUniformOnSphere<dim>(rng));
     }
 
-    // Boundary ids, assigned geometrically: the mesh file carries no surface elements at all, so
-    // every face arrives with the default id 0 (verified by inspecting the .msh directly).
-    // Called once here rather than per refinement cycle -- child faces inherit their parent's
-    // boundary id, so refinement preserves this classification.
+    // types::material_id is a build-time typedef (unsigned int in this deal.II build, but
+    // historically unsigned char, which tops out at 255). One grain per cell needs a DISTINCT
+    // id for every cell, so on a narrower build the counter would silently wrap and many grains
+    // would share an orientation -- a wrong answer with no error anywhere. Check rather than
+    // assume. If this ever does trip, the storage-free fix is to drop material_id entirely and
+    // identify a grain by its level-0 ancestor: walk `while (c->level() > 0) c = c->parent();`
+    // and use `c->index()`, which is unbounded and equally refinement-stable.
+    if (cellCounter == numbers::invalid_material_id ||
+        rotmatOrientationCell.size() != triangulation.n_active_cells())
+      throw std::runtime_error(
+        "could not assign a distinct material_id to each of " +
+        std::to_string(triangulation.n_active_cells()) +
+        " cells (assigned " + std::to_string(rotmatOrientationCell.size()) +
+        "); types::material_id is too narrow on this deal.II build for one grain per cell.");
+
+    // Sanity check on the sampling: the mean of a uniformly distributed direction is 0, and the
+    // mean of c_z^2 is 1/3. A gross deviation means the sampler is biased -- the classic failure
+    // being uniform theta instead of uniform cos(theta) -- which would quietly skew every stress
+    // statistic downstream without ever looking like an error.
+    {
+      Tensor<1, dim> meanAxis;
+      double meanCzSquared = 0.0;
+      for (const auto &R : rotmatOrientationCell)
+      {
+        for (unsigned int d = 0; d < dim; ++d) meanAxis[d] += R[dim-1][d];
+        meanCzSquared += R[dim-1][dim-1] * R[dim-1][dim-1];
+      }
+      meanAxis /= rotmatOrientationCell.size();
+      meanCzSquared /= rotmatOrientationCell.size();
+      std::cout << "Orientations: seed=" << orientationSeed
+                << ", n=" << rotmatOrientationCell.size()
+                << ", |mean c-axis|=" << meanAxis.norm()
+                << " (expect ~0), mean c_z^2=" << meanCzSquared
+                << " (expect ~0.3333)" << std::endl;
+    }
+
+    assignBoundaryIds();
 
     // Outer mesh-refinement-cycle loop, for mesh convergence studies: each cycle refines
     // (cycle 0 just does the initial setup) and then re-solves the *entire* temperature
@@ -1577,6 +2143,7 @@ namespace StepCooling
         const double curT  = std::max(T0 - temperatureStepNumber * dT, Tend);
         const double actualTempInc = prevT - curT;
 
+        lastProcessedTemperature = curT;
         calculateSolutionTemperatureStep(curT, actualTempInc, refinementCycle, temperatureStepNumber);
 
         // OutputFrequency was declared and documented but never actually consulted -- every step
@@ -1589,18 +2156,18 @@ namespace StepCooling
       }
     }
 
-    convergence_table.set_precision("L2", 3);
-    convergence_table.set_precision("H1", 3);
-    convergence_table.set_precision("Linfty", 3);
-    convergence_table.set_scientific("L2", true);
-    convergence_table.set_scientific("H1", true);
-    convergence_table.set_scientific("Linfty", true);
+    convergence_table.set_precision("meanDamage", 3);
+    convergence_table.set_precision("maxDamage", 3);
+    convergence_table.set_precision("maxSigmaZZ", 3);
+    convergence_table.set_precision("minSigmaZZ", 3);
+    convergence_table.set_precision("tensionFrac", 3);
+    convergence_table.set_precision("meanStressNorm", 3);
+    convergence_table.set_scientific("maxSigmaZZ", true);
+    convergence_table.set_scientific("minSigmaZZ", true);
+    convergence_table.set_scientific("meanStressNorm", true);
 
     convergence_table.set_tex_caption("cells", "\\# cells");
     convergence_table.set_tex_caption("dofs", "\\# dofs");
-    convergence_table.set_tex_caption("L2", "@f$L^2@f$-error");
-    convergence_table.set_tex_caption("H1", "@f$H^1@f$-error");
-    convergence_table.set_tex_caption("Linfty", "@f$L^\\infty@f$-error");
     convergence_table.set_tex_format("cells", "r");
     convergence_table.set_tex_format("dofs", "r");
 
@@ -1620,14 +2187,24 @@ namespace StepCooling
     const unsigned int maxIterations = prm.get_integer({"SolverParameters"}, "MaxNumberOfIterations");
     unsigned int dispDamageIterationNumber = 0;
     bool converged = false;
+
+    // Staggered displacement-damage iteration. Within one pass damage is FROZEN while
+    // equilibrium is solved, which is what keeps the mechanical problem linear and the tangent
+    // symmetric (so CG stays applicable). The outer loop then re-solves with the updated damage
+    // until neither the displacement nor the damage moves.
+    //
+    // This is also exactly why the periodic <sigma> = 0 machinery does not need a nonlinear
+    // solver: with damage frozen, each pass is a linear problem in (u_periodic, Ebar), so the
+    // 7-solve of homogenization.md section 6 is EXACT per pass, not an approximation. Only the
+    // number of times it runs changes. Once solve_with_zero_mean_stress() is implemented, it
+    // replaces the assemble/solve pair below and nothing else here changes.
     do
     {
       dispDamageIterationNumber++;
+
       assemble_system(curT);
       solve();
-      // No damage update: this test is purely thermo-elastic and damage stays identically 0
-      // (see file header). The quadrature storage is kept so assemble_system() is
-      // shape-identical to the coupled version in ../uniaxialDamageTest/.
+      predict_damage_tempInc_external_solver(curT, dT);
       process_solution(refinementCycle, temperatureStepNumber, dispDamageIterationNumber, curT);
 
       converged = checkConvergenceCriteria(curT, prevSolDisplacement, prevDamageSnapshot);
@@ -1730,49 +2307,90 @@ namespace StepCooling
   template <int dim>
   void ElasticProblem<dim>::process_solution(unsigned int refinementCycle, const unsigned int tempStepNum, const unsigned int iterSolverStepNum, double curT)
   {
-    // MMS error norms against the manufactured displacement. Damage is identically zero in this
-    // test, so nothing damage-related is reported.
-    preciseSolution.set_current_temperature(curT);
-    temperatureField.set_current_temperature(curT);
+    // There is no manufactured solution to compare against here -- this is the model, not a
+    // verification test -- so what gets reported is the physics the study is about: how much of
+    // the RVE is in c-axis tension, how extreme it gets, and how far damage has run.
+    const QGauss<dim> quadrature_formula(fe.degree + 1);
+    const unsigned int n_q_points = quadrature_formula.size();
+    FEValues<dim> fe_values(fe, quadrature_formula,
+                            update_gradients | update_JxW_values);
+    std::vector<Tensor<2, dim>> gradients(n_q_points);
 
-    Vector<float> difference_per_cell(triangulation.n_active_cells());
-    VectorTools::integrate_difference(dof_handler, solDisplacement, preciseSolution,
-                                      difference_per_cell, QGauss<dim>(fe.degree + 1),
-                                      VectorTools::L2_norm);
-    const double L2_error = VectorTools::compute_global_error(triangulation, difference_per_cell,
-                                                              VectorTools::L2_norm);
+    const double T0 = prm.get_double({"ModelParameters"}, "InitialTemperature");
+    const double stressThreshold =
+      prm.get_double({"MaterialParameters", "DamageParameters"}, "StressThreshold");
 
-    VectorTools::integrate_difference(dof_handler, solDisplacement, preciseSolution,
-                                      difference_per_cell, QGauss<dim>(fe.degree + 1),
-                                      VectorTools::H1_seminorm);
-    const double H1_error = VectorTools::compute_global_error(triangulation, difference_per_cell,
-                                                              VectorTools::H1_seminorm);
+    double maxSigmaZZ = -std::numeric_limits<double>::max();
+    double minSigmaZZ =  std::numeric_limits<double>::max();
+    double tensionVolume = 0.0, overThresholdVolume = 0.0, totalVolume = 0.0;
+    double meanDamage = 0.0, maxDamage = 0.0, damageWeight = 0.0;
 
-    const QTrapezoid<1> q_trapez;
-    const QIterated<dim> q_iterated(q_trapez, fe.degree * 2 + 1);
-    VectorTools::integrate_difference(dof_handler, solDisplacement, preciseSolution,
-                                      difference_per_cell, q_iterated,
-                                      VectorTools::Linfty_norm);
-    const double Linfty_error = VectorTools::compute_global_error(triangulation, difference_per_cell,
-                                                                  VectorTools::Linfty_norm);
+    for (const auto &cell : dof_handler.active_cell_iterators())
+    {
+      fe_values.reinit(cell);
+      fe_values[displacement].get_function_gradients(solDisplacement, gradients);
+      const auto cell_damage = damageInQuadraturePoints.get_data(cell);
+      const Tensor<2, dim> rotGlobalToLocal = getRotTensorGlobalToLocal(cell->material_id());
+
+      for (unsigned int q = 0; q < n_q_points; ++q)
+      {
+        const double w = fe_values.JxW(q);
+        const SymmetricTensor<2, dim> globalStrain =
+          dealii::symmetrize(gradients[q]) + macroscopicStrain;
+        const SymmetricTensor<2, dim> localStrain =
+          Physics::Transformations::basis_transformation(globalStrain, rotGlobalToLocal);
+        const SymmetricTensor<2, dim> localStress =
+          getLocalStressTensor(localStrain, cell_damage[q]->damage, curT);
+
+        // sigma_zz in the LOCAL frame: the c-axis normal stress, which is what drives the
+        // kinetic law. A global-frame sigma_zz would mean nothing here, since every grain has a
+        // different c-axis.
+        const double sZZ = localStress[dim-1][dim-1];
+        maxSigmaZZ = std::max(maxSigmaZZ, sZZ);
+        minSigmaZZ = std::min(minSigmaZZ, sZZ);
+        totalVolume += w;
+        if (sZZ > 0.0)             tensionVolume       += w;
+        if (sZZ > stressThreshold) overThresholdVolume += w;
+
+        meanDamage += cell_damage[q]->damage * w;
+        maxDamage = std::max(maxDamage, cell_damage[q]->damage);
+        damageWeight += w;
+      }
+    }
+    meanDamage /= damageWeight;
+    const double tensionFraction   = tensionVolume / totalVolume;
+    const double thresholdFraction = overThresholdVolume / totalVolume;
+
+    // <sigma>: identically zero for a genuinely free-cooling state (traction-free boundaries
+    // give it by the average stress theorem), and large and triaxial for the clamped case. So
+    // this doubles as a correctness check on "freeSurface" and as the quantity the periodic
+    // formulation will drive to zero by construction.
+    const SymmetricTensor<2, dim> meanStress = computeAverageStress(curT);
 
     const unsigned int n_active_cells = triangulation.n_active_cells();
     const unsigned int n_dofs = dof_handler.n_dofs();
 
     std::cout << "Refinement cycle " << refinementCycle << ", temperature step " << tempStepNum
-              << ", iteration " << iterSolverStepNum << ':' << std::endl
-              << "   Cells: " << n_active_cells << ", DoFs: " << n_dofs << std::endl
-              << "   CG iterations = " << lastCgIterations << std::endl
-              << "   displacement error vs u_exact: L2=" << L2_error
-              << ", H1=" << H1_error << ", Linfty=" << Linfty_error << std::endl;
+              << ", iteration " << iterSolverStepNum << " (T = " << curT << "):" << std::endl
+              << "   Cells: " << n_active_cells << ", DoFs: " << n_dofs
+              << ", CG iterations = " << lastCgIterations << std::endl
+              << "   local sigma_zz: min=" << minSigmaZZ << ", max=" << maxSigmaZZ
+              << ", tension fraction=" << tensionFraction
+              << ", above threshold=" << thresholdFraction << std::endl
+              << "   damage: mean=" << meanDamage << ", max=" << maxDamage << std::endl
+              << "   <sigma> norm=" << meanStress.norm()
+              << " (trace/3 = " << trace(meanStress) / dim << ")" << std::endl;
 
     convergence_table.add_value("cycle", refinementCycle);
     convergence_table.add_value("tempStep", tempStepNum);
     convergence_table.add_value("cells", n_active_cells);
     convergence_table.add_value("dofs", n_dofs);
-    convergence_table.add_value("L2", L2_error);
-    convergence_table.add_value("H1", H1_error);
-    convergence_table.add_value("Linfty", Linfty_error);
+    convergence_table.add_value("meanDamage", meanDamage);
+    convergence_table.add_value("maxDamage", maxDamage);
+    convergence_table.add_value("maxSigmaZZ", maxSigmaZZ);
+    convergence_table.add_value("minSigmaZZ", minSigmaZZ);
+    convergence_table.add_value("tensionFrac", tensionFraction);
+    convergence_table.add_value("meanStressNorm", meanStress.norm());
   }
 
 } // namespace StepCooling
