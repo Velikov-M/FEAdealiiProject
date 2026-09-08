@@ -115,6 +115,59 @@ for now**: the present aim is a qualitative grasp of the model's behaviour — e
 must be added to capture graphite's nano-cracking behaviour. Multiple realizations become necessary
 when this turns into a publication, not before.
 
+## Visualisation
+
+`./main` writes `polycrystalCooling-<n>.vtu` plus **`polycrystalCooling.pvd`**. Open the `.pvd` --
+it carries the whole cooling history as a ParaView time series, with the animation clock showing
+*accumulated cooling in K* (0 -> 200). Temperature itself decreases, and ParaView orders a series by
+increasing time, so using T directly would run the animation backwards.
+
+Use `freeSurface` for anything meant to be looked at. `zeroDisplacement` clamps the boundary and
+buries every field under a uniform triaxial offset.
+
+### What is in the file, and why
+
+| array | frame | meaning |
+|---|---|---|
+| `displacement` | global | vector; for *Warp By Vector* |
+| `c_axis` | — | unit normal to the basal plane, per grain; vector, for glyphs |
+| `sigma_caxis_normal_local` | **crystal** | traction normal to the basal planes: **the damage driver** |
+| `sigma_basal_shear_local` | **crystal** | `sqrt(s13^2 + s23^2)`; the mode the kinetic law does *not* read |
+| `von_mises`, `pressure` | invariant | same in any frame; `pressure` positive in compression |
+| `damage_driving_ratio` | — | `sigma_caxis_normal / threshold`; **> 1 means damage is growing now** |
+| `damage` | — | omega, the consequence |
+| `sigma_global_*` | global | six components, only if `OutputParameters/WriteFullStressTensor` |
+
+On **local vs global**: sigma is one tensor, so given the orientation (also written) the two frames
+are redundant *information*. They are not redundant in *practice*, because ParaView cannot apply a
+per-cell rotation -- anything wanted in the crystal frame has to be computed in C++. Hence the file
+carries frame-independent invariants (nothing to get wrong), the specific local components that
+carry physics, and the full global tensor only on request. Every name states its frame, because
+"sigma_zz" on its own is genuinely ambiguous here.
+
+**Read the c-axis normal stress correctly.** It is not a component along one fixed direction --
+every grain's c points somewhere different. It is well defined (traction normal to *that grain's*
+basal planes) and it is exactly what drives damage, so colouring by it is right. But label it
+"c-axis normal stress", never "sigma_zz".
+
+### ParaView recipe
+
+Colour + orientation arrows in one view:
+
+1. Open `polycrystalCooling.pvd`, Apply.
+2. Colour by `damage_driving_ratio`, rescale to `[0, 1.2]`, diverging colour map centred on 1.0 --
+   then warm colours are exactly the grains whose damage is growing.
+3. For the c-axis field: **Point Data to Cell Data** -> **Cell Centers** -> **Glyph**.
+   Set *Glyph Type* = **Line**, *Orientation Array* = `c_axis`, *Scale Array* = `No scale array`,
+   *Scale Factor* ~ 0.08 (about one cell), *Glyph Mode* = All Points.
+   The three filters are needed because `c_axis` is written at the 8 vertices of every cell, so
+   glyphing the raw points would give 8 glyphs per grain instead of one at its centre.
+4. Play the animation to watch stress build, cross the threshold, and damage follow.
+
+**Use a Line glyph, not an Arrow.** The c-axis is a *director*: `c` and `-c` describe the same
+crystal, and the sign stored in the file is an artefact of how the direction was sampled. Arrows
+would imply a polarity the material does not have.
+
 ## Material data
 
 The CTE values in `input.json` are **placeholders**, flagged as such in their `documentation` fields:

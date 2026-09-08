@@ -95,6 +95,7 @@
 
 #include <deal.II/numerics/vector_tools.h>
 #include <deal.II/numerics/data_out.h>
+#include <deal.II/numerics/data_postprocessor.h>
 #include <deal.II/numerics/error_estimator.h>
 
 #include <deal.II/physics/elasticity/standard_tensors.h>
@@ -562,6 +563,15 @@ namespace StepCooling
                         Patterns::Anything(),
                         "Prefix for output file names");
 
+      prm.declare_entry("WriteFullStressTensor",
+                        "false",
+                        Patterns::Bool(),
+                        "Also write the six independent components of the GLOBAL-frame stress "
+                        "tensor. Off by default: the frame-independent invariants plus the local "
+                        "components already carry the physics, so this is clutter for a "
+                        "demonstration and costs tens of MB per step on a refined mesh. Turn it "
+                        "on for post-hoc analysis that needs the full tensor.");
+
       prm.declare_entry("OutputFrequency",
                         "10",
                         Patterns::Integer(1),
@@ -804,6 +814,44 @@ namespace StepCooling
     {};
   } // namespace DamageScratch
 
+  // Emits the grain's c-axis as a genuine 3-vector so ParaView's Glyph filter can consume it
+  // directly, with no Calculator step.
+  //
+  // Why a postprocessor rather than a plain cell array: DataOut's cell data is strictly ONE
+  // component per array (data_out_dof_data.templates.h asserts names.size() == 1), so a cell
+  // vector cannot be written at all. A DataPostprocessorVector is evaluated per cell -- the
+  // current cell is available through get_cell(), which is how the per-grain orientation is
+  // looked up -- and does produce a real vector field.
+  //
+  // NOTE FOR VISUALIZATION: the c-axis is a DIRECTOR, not a vector. c and -c describe the same
+  // crystal, so the sign carried here is an artefact of how the direction was sampled. Use a
+  // LINE glyph (double-ended), not an Arrow, or the picture will suggest a polarity the material
+  // does not have. See README.md.
+  template <int dim>
+  class CAxisPostprocessor : public DataPostprocessorVector<dim>
+  {
+  public:
+    CAxisPostprocessor(const std::vector<Tensor<2, dim>> &orientations)
+      : DataPostprocessorVector<dim>("c_axis", update_default)
+      , orientations(orientations)
+    {}
+
+    virtual void evaluate_vector_field(
+      const DataPostprocessorInputs::Vector<dim> &inputs,
+      std::vector<Vector<double>> &computed_quantities) const override
+    {
+      const auto cell = inputs.template get_cell<dim>();
+      // Row 2 of the global->local rotation is the c-axis written in global coordinates.
+      const Tensor<2, dim> &R = orientations[cell->material_id() - 1];
+      for (auto &q : computed_quantities)
+        for (unsigned int d = 0; d < dim; ++d)
+          q(d) = R[dim - 1][d];
+    }
+
+  private:
+    const std::vector<Tensor<2, dim>> &orientations;
+  };
+
   template <int dim>
   class ElasticProblem
   {
@@ -944,8 +992,8 @@ namespace StepCooling
     ElasticityTensor<dim> elasticityTensor;
     CteTensor<dim> cteTensor;
 
-    Tensor<2,dim,double> getRotTensorGlobalToLocal(int cellId);
-    SymmetricTensor<2,dim> getLocalStressTensor(const SymmetricTensor<2,dim> &localStrain, double curOmega, double curTemperature);
+    Tensor<2,dim,double> getRotTensorGlobalToLocal(int cellId) const;
+    SymmetricTensor<2,dim> getLocalStressTensor(const SymmetricTensor<2,dim> &localStrain, double curOmega, double curTemperature) const;
 
     std::istringstream parseMSHandPrepareStream(std::string mshFileName);
 
@@ -974,6 +1022,12 @@ namespace StepCooling
     TimerOutput timer;
 
     ConvergenceTable convergence_table;
+
+    // (pseudo-time, filename) pairs for the ParaView .pvd time series written at the end of
+    // run(). The time value is the accumulated cooling s = T_0 - T, which INCREASES over the run
+    // -- temperature itself decreases, and ParaView orders a series by increasing time, so using
+    // T directly would play the animation backwards.
+    mutable std::vector<std::pair<double, std::string>> pvdTimeSeries;
 
   };
 
@@ -1054,14 +1108,14 @@ namespace StepCooling
   }
 
   template <int dim>
-  SymmetricTensor<2,dim> ElasticProblem<dim>::getLocalStressTensor(const SymmetricTensor<2,dim> &localStrain, double curOmega, double curTemperature) //provide localStrain!!!
+  SymmetricTensor<2,dim> ElasticProblem<dim>::getLocalStressTensor(const SymmetricTensor<2,dim> &localStrain, double curOmega, double curTemperature) const //provide localStrain!!!
   {
     double T0 = prm.get_double({"ModelParameters"}, "InitialTemperature");
     return elasticityTensor.getElasticityTensor(curOmega, curTemperature) * (localStrain - cteTensor.getcteTensor(curTemperature) * (curTemperature - T0)); 
   }
 
   template <int dim>
-  Tensor<2,dim,double> ElasticProblem<dim>::getRotTensorGlobalToLocal(int cellId)
+  Tensor<2,dim,double> ElasticProblem<dim>::getRotTensorGlobalToLocal(int cellId) const
   {
     Assert(dim == 3, ExcNotImplemented());
     return rotmatOrientationCell[cellId - 1];
@@ -1878,67 +1932,71 @@ namespace StepCooling
   template <int dim>
   void ElasticProblem<dim>::output_results(const unsigned int cycle) const
   {
+    // WHAT GOES IN THE FILE, AND WHY
+    //
+    // The story this output has to tell is: c-axis tension builds up as the RVE cools ->
+    // it crosses the threshold -> damage grows -> the grain softens and sheds load. So the
+    // fields are chosen to make each link in that chain visible, and NOT to dump everything.
+    //
+    // On the local-vs-global question. sigma is one tensor; "local" and "global" are the same
+    // tensor in different bases, so writing both in full would be redundant INFORMATION given
+    // that the orientation is also written. But it is not redundant in PRACTICE, because
+    // ParaView cannot apply a different rotation per cell -- anything wanted in the crystal
+    // frame has to be computed here. So the file carries:
+    //
+    //   * frame-independent invariants (von Mises, pressure). No frame to get wrong, and they
+    //     answer "how hard is this grain being worked" for any viewer.
+    //   * the specific LOCAL components that carry physics: the c-axis normal stress (what the
+    //     kinetic law actually reads) and the basal shear magnitude.
+    //   * the full GLOBAL tensor only on request (OutputParameters/WriteFullStressTensor), for
+    //     post-hoc analysis. Off by default: six more arrays per step is clutter for a
+    //     demonstration, and at refine_global(3) it is tens of MB per step.
+    //
+    // Every array name states its frame, because "sigma_zz" alone is genuinely ambiguous here
+    // and a viewer colouring by it has no way to tell which one they are looking at.
+    //
+    // IMPORTANT for reading the picture: the c-axis normal stress is NOT a component of one
+    // fixed global direction -- each grain's c points somewhere different. It is well defined
+    // (traction normal to that grain's basal planes) and it is exactly the damage driver, so
+    // colouring by it is right; but the caption must say "c-axis normal stress", never
+    // "sigma_zz".
     const QGauss<dim> quadrature_formula(fe.degree + 1);
     const unsigned int n_q_points = quadrature_formula.size();
-    const unsigned int dofs_per_cell = fe.n_dofs_per_cell();
     FEValues<dim> fe_values(fe, quadrature_formula,
-    update_values | update_gradients | update_quadrature_points | update_JxW_values);
+                            update_gradients | update_JxW_values);
     DataOut<dim> data_out;
     data_out.attach_dof_handler(dof_handler);
 
-    std::vector<std::string>  solDisplacement_names;
-    switch (dim)
-      {
-        case 1:
-           solDisplacement_names.emplace_back("displacement");
-          break;
-        case 2:
-           solDisplacement_names.emplace_back("x_displacement");
-           solDisplacement_names.emplace_back("y_displacement");
-          break;
-        case 3:
-           solDisplacement_names.emplace_back("x_displacement");
-           solDisplacement_names.emplace_back("y_displacement");
-           solDisplacement_names.emplace_back("z_displacement");
-          break;
-        default:
-          DEAL_II_NOT_IMPLEMENTED();
-      }
+    // Displacement as a genuine vector, so ParaView's "Warp By Vector" works without setup.
+    const std::vector<std::string> displacement_names(dim, "displacement");
+    const std::vector<DataComponentInterpretation::DataComponentInterpretation>
+      displacement_interpretation(dim,
+        DataComponentInterpretation::component_is_part_of_vector);
+    data_out.add_data_vector(solDisplacement, displacement_names,
+                             DataOut<dim>::type_dof_data, displacement_interpretation);
 
-    data_out.add_data_vector( solDisplacement,  solDisplacement_names);
+    // The grain c-axis, as a vector, for glyphing.
+    CAxisPostprocessor<dim> cAxisPostprocessor(rotmatOrientationCell);
+    data_out.add_data_vector(solDisplacement, cAxisPostprocessor);
 
-    Vector<double> cell_damage(triangulation.n_active_cells());
-    for (const auto &cell : dof_handler.active_cell_iterators())
-    {
-        if (!cell->is_locally_owned())
-            continue;                     // essential in parallel computations
-
-        fe_values.reinit(cell);
-
-        // Retrieve the per‑quadrature‑point history
-        const auto qp_damage =
-            damageInQuadraturePoints.get_data(cell);
-
-        double average = 0.0;
-        for (unsigned int q = 0; q < quadrature_formula.size(); ++q)
-            average += qp_damage[q]->damage;   // dereference the shared_ptr
-        average /= quadrature_formula.size();
-
-        // Index by active cell index is mandatory for DataOut
-        cell_damage[cell->active_cell_index()] = average;
-    }
-    data_out.add_data_vector(cell_damage, "damage");
-
-    // Local-frame sigma_zz -- the c-axis normal stress that actually drives the kinetic law --
-    // plus the sign indicator the study is about. Reported per cell (one grain at the current
-    // resolution), averaged over the cell's quadrature points.
-    Vector<double> cell_sigma_zz_local(triangulation.n_active_cells());
-    Vector<double> cell_tension_flag(triangulation.n_active_cells());
-    Vector<double> cell_hydrostatic(triangulation.n_active_cells());
-    Vector<double> cell_c_axis_z(triangulation.n_active_cells());
-
+    const bool writeFullTensor =
+      prm.get_bool({"OutputParameters"}, "WriteFullStressTensor");
     const double T0 = prm.get_double({"ModelParameters"}, "InitialTemperature");
     const double curT = lastProcessedTemperature;
+    const double stressThreshold =
+      prm.get_double({"MaterialParameters", "DamageParameters"}, "StressThreshold");
+
+    const unsigned int nCells = triangulation.n_active_cells();
+    Vector<double> cell_damage(nCells);
+    Vector<double> cell_sigma_caxis_normal(nCells);   // LOCAL sigma_33 -- the damage driver
+    Vector<double> cell_sigma_basal_shear(nCells);    // LOCAL sqrt(s13^2 + s23^2)
+    Vector<double> cell_von_mises(nCells);            // frame independent
+    Vector<double> cell_pressure(nCells);             // frame independent
+    Vector<double> cell_driving_ratio(nCells);        // sigma_caxis_normal / threshold
+    std::array<Vector<double>, 6> cell_sigma_global;
+    if (writeFullTensor)
+      for (auto &v : cell_sigma_global) v.reinit(nCells);
+
     std::vector<Tensor<2, dim>> gradients(n_q_points);
 
     for (const auto &cell : dof_handler.active_cell_iterators())
@@ -1946,9 +2004,12 @@ namespace StepCooling
       fe_values.reinit(cell);
       fe_values[displacement].get_function_gradients(solDisplacement, gradients);
       const auto qp_damage = damageInQuadraturePoints.get_data(cell);
-      const Tensor<2, dim> rotGlobalToLocal = rotmatOrientationCell[cell->material_id() - 1];
+      const Tensor<2, dim> rotGlobalToLocal = getRotTensorGlobalToLocal(cell->material_id());
+      const Tensor<2, dim> rotLocalToGlobal = transpose(rotGlobalToLocal);
 
-      double sigmaZZ = 0.0, hydro = 0.0;
+      double damage = 0.0, sigmaCaxis = 0.0, basalShear = 0.0, vonMises = 0.0, pressure = 0.0;
+      SymmetricTensor<2, dim> globalStressAvg;
+
       for (unsigned int q = 0; q < n_q_points; ++q)
       {
         const SymmetricTensor<2, dim> globalStrain =
@@ -1956,28 +2017,71 @@ namespace StepCooling
         const SymmetricTensor<2, dim> localStrain =
           Physics::Transformations::basis_transformation(globalStrain, rotGlobalToLocal);
         const SymmetricTensor<2, dim> localStress =
-          elasticityTensor.getElasticityTensor(qp_damage[q]->damage, curT) *
-          (localStrain - cteTensor.getcteTensor(curT) * (curT - T0));
-        sigmaZZ += localStress[dim-1][dim-1];
-        hydro   += trace(localStress) / dim;
+          getLocalStressTensor(localStrain, qp_damage[q]->damage, curT);
+
+        damage     += qp_damage[q]->damage;
+        sigmaCaxis += localStress[dim-1][dim-1];
+        // Shear ON the basal planes: the components with one index along c and one in-plane.
+        // The current kinetic law does NOT read this -- it is written so that its magnitude
+        // relative to the c-axis normal stress can be judged, i.e. so the modelling choice to
+        // ignore basal shear can be checked rather than assumed.
+        basalShear += std::sqrt(localStress[0][dim-1] * localStress[0][dim-1] +
+                                localStress[1][dim-1] * localStress[1][dim-1]);
+        // Invariants: identical in either frame, so no ambiguity for the viewer.
+        vonMises += std::sqrt(1.5 * (deviator(localStress) * deviator(localStress)));
+        pressure += -trace(localStress) / dim;   // positive in compression
+
+        if (writeFullTensor)
+          globalStressAvg +=
+            Physics::Transformations::basis_transformation(localStress, rotLocalToGlobal);
       }
+
       const unsigned int idx = cell->active_cell_index();
-      cell_sigma_zz_local[idx] = sigmaZZ / n_q_points;
-      cell_hydrostatic[idx]    = hydro / n_q_points;
-      cell_tension_flag[idx]   = (cell_sigma_zz_local[idx] > 0.0) ? 1.0 : -1.0;
-      // |c_z| identifies which grains have their weak c-axis aligned with the global z axis --
-      // useful for reading the stress map against the orientation field that produced it.
-      cell_c_axis_z[idx] = std::abs(rotGlobalToLocal[dim-1][dim-1]);
+      cell_damage[idx]              = damage     / n_q_points;
+      cell_sigma_caxis_normal[idx]  = sigmaCaxis / n_q_points;
+      cell_sigma_basal_shear[idx]   = basalShear / n_q_points;
+      cell_von_mises[idx]           = vonMises   / n_q_points;
+      cell_pressure[idx]            = pressure   / n_q_points;
+      // > 1 means this grain is above threshold and its damage is actively growing. The single
+      // most legible scalar for the story: threshold it at 1 in ParaView and what remains is
+      // exactly the set of grains driving the damage seen in the `damage` array.
+      cell_driving_ratio[idx]       = cell_sigma_caxis_normal[idx] / stressThreshold;
+
+      if (writeFullTensor)
+      {
+        globalStressAvg /= n_q_points;
+        cell_sigma_global[0][idx] = globalStressAvg[0][0];
+        cell_sigma_global[1][idx] = globalStressAvg[1][1];
+        cell_sigma_global[2][idx] = globalStressAvg[2][2];
+        cell_sigma_global[3][idx] = globalStressAvg[0][1];
+        cell_sigma_global[4][idx] = globalStressAvg[0][2];
+        cell_sigma_global[5][idx] = globalStressAvg[1][2];
+      }
     }
-    data_out.add_data_vector(cell_sigma_zz_local, "sigma_zz_local");
-    data_out.add_data_vector(cell_hydrostatic, "hydrostatic_stress");
-    data_out.add_data_vector(cell_tension_flag, "tension_indicator");
-    data_out.add_data_vector(cell_c_axis_z, "c_axis_z_component");
+
+    data_out.add_data_vector(cell_damage, "damage");
+    data_out.add_data_vector(cell_sigma_caxis_normal, "sigma_caxis_normal_local");
+    data_out.add_data_vector(cell_sigma_basal_shear, "sigma_basal_shear_local");
+    data_out.add_data_vector(cell_von_mises, "von_mises");
+    data_out.add_data_vector(cell_pressure, "pressure");
+    data_out.add_data_vector(cell_driving_ratio, "damage_driving_ratio");
+    if (writeFullTensor)
+    {
+      static const std::array<const char *, 6> names{{
+        "sigma_global_xx", "sigma_global_yy", "sigma_global_zz",
+        "sigma_global_xy", "sigma_global_xz", "sigma_global_yz"}};
+      for (unsigned int k = 0; k < 6; ++k)
+        data_out.add_data_vector(cell_sigma_global[k], names[k]);
+    }
 
     data_out.build_patches();
 
-    std::ofstream output("solDisplacement-" + std::to_string(cycle) + ".vtk");
-    data_out.write_vtk(output);
+    const std::string fileName = "polycrystalCooling-" + std::to_string(cycle) + ".vtu";
+    std::ofstream output(fileName);
+    data_out.write_vtu(output);
+
+    // Accumulated cooling, which increases over the run -- see pvdTimeSeries.
+    pvdTimeSeries.emplace_back(T0 - curT, fileName);
   }
 
   template <int dim>
@@ -2172,6 +2276,19 @@ namespace StepCooling
     convergence_table.set_tex_format("dofs", "r");
 
     convergence_table.write_text(std::cout);
+
+    // ParaView time series. Without this the .vtu files are an unordered pile; with it ParaView
+    // opens ONE entry, scrubs through the cooling history, and shows accumulated cooling in K on
+    // the animation clock -- which is what makes "stress builds up, then damage grows" legible
+    // as a sequence rather than as ten separate pictures.
+    if (!pvdTimeSeries.empty())
+    {
+      std::ofstream pvd("polycrystalCooling.pvd");
+      DataOutBase::write_pvd_record(pvd, pvdTimeSeries);
+      std::cout << "Wrote ParaView time series polycrystalCooling.pvd ("
+                << pvdTimeSeries.size() << " steps). Open THIS, not the individual .vtu files."
+                << std::endl;
+    }
   }
 
   template <int dim>
@@ -2316,7 +2433,6 @@ namespace StepCooling
                             update_gradients | update_JxW_values);
     std::vector<Tensor<2, dim>> gradients(n_q_points);
 
-    const double T0 = prm.get_double({"ModelParameters"}, "InitialTemperature");
     const double stressThreshold =
       prm.get_double({"MaterialParameters", "DamageParameters"}, "StressThreshold");
 
