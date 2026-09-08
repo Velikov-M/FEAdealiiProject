@@ -11,6 +11,21 @@ The periodic formulation is not implemented: `applyBoundaryConstraints()`,
 `assemble_macroscopic_blocks()` and `solve_with_zero_mean_stress()` carry templates for it and throw
 if selected. See `homogenization.md` for the derivation they must implement.
 
+## Running it
+
+```
+cd build && cmake .. && make && ./main
+```
+
+`build/` holds symlinks to `input.json`, the mesh and `groupFile`, so there is exactly one copy of
+each and editing the tracked `input.json` takes effect immediately. (An earlier real *copy* of
+`input.json` in `build/` silently shadowed the tracked one, which looks exactly like edits being
+ignored -- hence the symlink.)
+
+Switch boundary condition family with `BoundaryConditions/Type`; switch the reference/threaded
+assembly paths with `ParallelizationParameters/UseWorkStream`. The two must agree to the last
+digit, and that is worth re-checking after any assembly change.
+
 ## Setup
 
 - Same 10x10x10 hexahedral mesh; **each original cell is one domain** (1000 grains).
