@@ -168,18 +168,29 @@ refinement a max would be more informative, since initiation is an extreme-value
 
 ### ParaView recipe
 
-Colour + orientation arrows in one view:
+Fastest route: **Tools -> Python Shell -> Run Script**, pick `paraview_setup.py` in this
+directory. It builds the whole view below in one go.
 
-1. Open `polycrystalCooling.pvd`, Apply.
+By hand:
+
+1. Open `polycrystalCooling.pvd` (not the individual `.vtu` files), Apply.
 2. Colour by `damage_driving_ratio`, rescale to `[0, 1.2]`, diverging colour map centred on 1.0 --
    then warm colours are exactly the grains whose damage is growing. (`sigma_33` tells the same
    story in Pa if absolute values are wanted.)
-3. For the c-axis field: **Point Data to Cell Data** -> **Cell Centers** -> **Glyph**.
-   Set *Glyph Type* = **Line**, *Orientation Array* = `c_axis`, *Scale Array* = `No scale array`,
-   *Scale Factor* ~ 0.08 (about one cell), *Glyph Mode* = All Points.
-   The three filters are needed because `c_axis` is written at the 8 vertices of every cell, so
-   glyphing the raw points would give 8 glyphs per grain instead of one at its centre.
+3. For the c-axis field, chain three filters:
+
+   `Point Data to Cell Data` -> `Cell Centers` -> `Glyph`
+
+   In the Glyph filter: *Glyph Type* = **Line**, *Orientation Array* = `c_axis`,
+   *Scale Array* = `No scale array`, *Scale Factor* = `0.08` (cells are 0.1 wide),
+   *Glyph Mode* = All Points. Colour the glyphs solid black.
 4. Play the animation to watch stress build, cross the threshold, and damage follow.
+
+**Why the two extra filters.** `c_axis` is written at all 8 corners of every cell -- that is what
+keeps values from being averaged across grain boundaries -- so glyphing the raw points gives 8
+glyphs per grain, sitting at its corners rather than one at its centre. `Point Data to Cell Data`
+collapses the 8 identical corner values to one per cell (exact -- they are bit-identical), and
+`Cell Centers` turns that into a single point at the centroid.
 
 **Use a Line glyph, not an Arrow.** The c-axis is a *director*: `c` and `-c` describe the same
 crystal, and the sign stored in the file is an artefact of how the direction was sampled. Arrows
