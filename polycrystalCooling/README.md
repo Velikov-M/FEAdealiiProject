@@ -125,30 +125,46 @@ increasing time, so using T directly would run the animation backwards.
 Use `freeSurface` for anything meant to be looked at. `zeroDisplacement` clamps the boundary and
 buries every field under a uniform triaxial offset.
 
+### Index convention
+
+**`11`/`22`/`33` are LOCAL (crystal) coordinates; `xx`/`yy`/`zz` are GLOBAL (laboratory).**
+This holds in the code, in the comments and in every array name. So the damage driver is
+`sigma_33` -- the stress normal to *that grain's* basal plane -- and it is never called
+`sigma_zz`. The two are different physical quantities: every grain's basal normal points
+somewhere different, so there is no fixed direction `sigma_33` refers to.
+
 ### What is in the file, and why
+
+Always written:
 
 | array | frame | meaning |
 |---|---|---|
 | `displacement` | global | vector; for *Warp By Vector* |
 | `c_axis` | — | unit normal to the basal plane, per grain; vector, for glyphs |
-| `sigma_caxis_normal_local` | **crystal** | traction normal to the basal planes: **the damage driver** |
-| `sigma_basal_shear_local` | **crystal** | `sqrt(s13^2 + s23^2)`; the mode the kinetic law does *not* read |
+| `sigma_33` | **local** | stress normal to the basal plane: **the damage driver** |
+| `tau_basal` | **local** | `sqrt(sigma_13^2 + sigma_23^2)`; the mode the kinetic law does *not* read |
 | `von_mises`, `pressure` | invariant | same in any frame; `pressure` positive in compression |
-| `damage_driving_ratio` | — | `sigma_caxis_normal / threshold`; **> 1 means damage is growing now** |
+| `damage_driving_ratio` | — | `sigma_33 / threshold`; **> 1 means damage is growing now** |
 | `damage` | — | omega, the consequence |
-| `sigma_global_*` | global | six components, only if `OutputParameters/WriteFullStressTensor` |
+
+With `OutputParameters/WriteFullStressTensor = true`, the complete tensor in both frames:
+`sigma_11, sigma_22, sigma_12, sigma_13, sigma_23` (local; `sigma_33` is always written) and
+`sigma_xx ... sigma_yz` (global).
 
 On **local vs global**: sigma is one tensor, so given the orientation (also written) the two frames
 are redundant *information*. They are not redundant in *practice*, because ParaView cannot apply a
-per-cell rotation -- anything wanted in the crystal frame has to be computed in C++. Hence the file
-carries frame-independent invariants (nothing to get wrong), the specific local components that
-carry physics, and the full global tensor only on request. Every name states its frame, because
-"sigma_zz" on its own is genuinely ambiguous here.
+per-cell rotation -- anything wanted in the crystal frame has to be computed in C++. Hence the
+default set carries `sigma_33`, `tau_basal` and the frame-independent invariants, with both full
+tensors available on request. The index convention is what makes the frame unambiguous from the
+name alone.
 
-**Read the c-axis normal stress correctly.** It is not a component along one fixed direction --
-every grain's c points somewhere different. It is well defined (traction normal to *that grain's*
-basal planes) and it is exactly what drives damage, so colouring by it is right. But label it
-"c-axis normal stress", never "sigma_zz".
+Every scalar is derived from **one** cell-averaged stress tensor, not averaged scalar by scalar.
+That matters for the nonlinear ones: `mean(|x|) != |mean(x)|`, so averaging pointwise would leave
+`tau_basal` disagreeing with `hypot(sigma_13, sigma_23)` (measured at 6e-4 relative, far above
+float32 noise). As written, anything recomputed in ParaView's Calculator matches the file exactly.
+
+Note the per-cell value is a **mean** over quadrature points. For locating initiation sites after
+refinement a max would be more informative, since initiation is an extreme-value question.
 
 ### ParaView recipe
 
@@ -156,7 +172,8 @@ Colour + orientation arrows in one view:
 
 1. Open `polycrystalCooling.pvd`, Apply.
 2. Colour by `damage_driving_ratio`, rescale to `[0, 1.2]`, diverging colour map centred on 1.0 --
-   then warm colours are exactly the grains whose damage is growing.
+   then warm colours are exactly the grains whose damage is growing. (`sigma_33` tells the same
+   story in Pa if absolute values are wanted.)
 3. For the c-axis field: **Point Data to Cell Data** -> **Cell Centers** -> **Glyph**.
    Set *Glyph Type* = **Line**, *Orientation Array* = `c_axis`, *Scale Array* = `No scale array`,
    *Scale Factor* ~ 0.08 (about one cell), *Glyph Mode* = All Points.

@@ -48,9 +48,20 @@
 // reason for T to vary in space. The thermal strain is alpha(T)*(T-T_0), a secant/mean CTE --
 // see homogenization.md section 2 if literature values turn out to be instantaneous.
 //
-// DAMAGE: the Rabotnov-type kinetic law verified in ../uniaxialDamageTest/, driven by the
-// LOCAL-frame sigma_zz (the c-axis normal stress) and solved per quadrature point by a
-// bracketed toms748 root search. Coupling to the displacement solve is staggered: damage is
+// ---------------------------------------------------------------------------------------------
+// INDEX CONVENTION -- used in the code, the comments and every output array name
+//
+//   sigma_xx, sigma_yy, sigma_zz, ...   GLOBAL (laboratory) coordinates
+//   sigma_11, sigma_22, sigma_33, ...   LOCAL (crystal) coordinates
+//
+// So the damage driver is sigma_33: the stress normal to the basal plane of THAT grain. It is
+// never called sigma_zz, and the two must never be confused -- every grain has a different
+// c-axis, so they are different physical quantities.
+// ---------------------------------------------------------------------------------------------
+//
+// DAMAGE: the Rabotnov-type kinetic law verified in ../uniaxialDamageTest/, driven by sigma_33
+// (the stress normal to the basal plane) and solved per quadrature point by a bracketed toms748
+// root search. Coupling to the displacement solve is staggered: damage is
 // frozen while equilibrium is solved, and the two are iterated to convergence within each
 // temperature step.
 //
@@ -566,11 +577,13 @@ namespace StepCooling
       prm.declare_entry("WriteFullStressTensor",
                         "false",
                         Patterns::Bool(),
-                        "Also write the six independent components of the GLOBAL-frame stress "
-                        "tensor. Off by default: the frame-independent invariants plus the local "
-                        "components already carry the physics, so this is clutter for a "
-                        "demonstration and costs tens of MB per step on a refined mesh. Turn it "
-                        "on for post-hoc analysis that needs the full tensor.");
+                        "Also write the complete stress tensor in BOTH frames: the remaining "
+                        "five local components (sigma_11, sigma_22, sigma_12, sigma_13, "
+                        "sigma_23 -- sigma_33 is always written) and all six global ones "
+                        "(sigma_xx ... sigma_yz). Off by default: sigma_33, tau_basal and the "
+                        "frame-independent invariants already carry the physics, so this is "
+                        "clutter for a demonstration and costs tens of MB per step on a refined "
+                        "mesh. Turn it on for post-hoc analysis needing the full tensor.");
 
       prm.declare_entry("OutputFrequency",
                         "10",
@@ -1595,11 +1608,11 @@ namespace StepCooling
   }
 
   // Backward-Euler residual of the Rabotnov-type kinetic equation
-  //   domega/ds = A * (macaulay(sigma_zz - sigma_th)/sigma_th)^m * (1/(1-omega))^m
+  //   domega/ds = A * (macaulay(sigma_33 - sigma_th)/sigma_th)^m * (1/(1-omega))^m
   // discretized as omega_new - omega_old = A*(...)^m * tempInc, where s = T_0 - T is the
-  // (positive, increasing) pseudo-time and tempInc is its step magnitude. sigma_zz is the
-  // LOCAL-frame c-axis normal stress -- which is why the per-grain orientation matters here and
-  // not only in assembly.
+  // (positive, increasing) pseudo-time and tempInc is its step magnitude. sigma_33 is the stress
+  // normal to that grain's basal plane (LOCAL frame, per the index convention in the file
+  // header) -- which is why the per-grain orientation matters here and not only in assembly.
   //
   // Two corrections carried over from the debugging in ../mmsSandbox, both easy to reintroduce:
   //  - actingStress is Macaulay-clamped rather than throwing: the root search evaluates the
@@ -1690,7 +1703,7 @@ namespace StepCooling
         localStress = getLocalStressTensor(localStrain, cur_damage, curTemperature);
 
         // The driving stress is the REAL stress computed from the current numerical damage, so
-        // the negative-feedback loop is closed: growing damage lowers C33 -> lowers sigma_zz ->
+        // the negative-feedback loop is closed: growing damage lowers C33 -> lowers sigma_33 ->
         // slows further growth.
         const double lowerBound = old_damage; // damage is non-decreasing within a load step
         const double upperBound = 0.999;      // stay clear of the (1-omega)->0 singularity
@@ -1934,23 +1947,25 @@ namespace StepCooling
   {
     // WHAT GOES IN THE FILE, AND WHY
     //
-    // The story this output has to tell is: c-axis tension builds up as the RVE cools ->
+    // The story this output has to tell is: basal-plane tension builds up as the RVE cools ->
     // it crosses the threshold -> damage grows -> the grain softens and sheds load. So the
     // fields are chosen to make each link in that chain visible, and NOT to dump everything.
     //
-    // On the local-vs-global question. sigma is one tensor; "local" and "global" are the same
-    // tensor in different bases, so writing both in full would be redundant INFORMATION given
-    // that the orientation is also written. But it is not redundant in PRACTICE, because
-    // ParaView cannot apply a different rotation per cell -- anything wanted in the crystal
-    // frame has to be computed here. So the file carries:
+    // Names follow the index convention in the file header: 11/22/33 are LOCAL (crystal) and
+    // xx/yy/zz are GLOBAL. That convention is what makes the frame unambiguous from the array
+    // name alone, which matters because the two are different physical quantities here.
     //
-    //   * frame-independent invariants (von Mises, pressure). No frame to get wrong, and they
-    //     answer "how hard is this grain being worked" for any viewer.
-    //   * the specific LOCAL components that carry physics: the c-axis normal stress (what the
-    //     kinetic law actually reads) and the basal shear magnitude.
-    //   * the full GLOBAL tensor only on request (OutputParameters/WriteFullStressTensor), for
-    //     post-hoc analysis. Off by default: six more arrays per step is clutter for a
-    //     demonstration, and at refine_global(3) it is tens of MB per step.
+    // On the local-vs-global question. sigma is one tensor; the two are the same tensor in
+    // different bases, so given the orientation (also written) one of them is redundant
+    // INFORMATION. They are not redundant in PRACTICE, because ParaView cannot apply a different
+    // rotation per cell -- anything wanted in the crystal frame has to be computed here. So:
+    //
+    //   * always: sigma_33 (the damage driver), tau_basal, and the frame-independent invariants
+    //     von_mises and pressure, which have no frame to get wrong.
+    //   * on request (OutputParameters/WriteFullStressTensor): the REMAINING five local
+    //     components and all six global ones, i.e. the complete tensor in both frames for
+    //     post-hoc analysis. Off by default -- eleven more arrays is clutter for a demonstration
+    //     and tens of MB per step once refined.
     //
     // Every array name states its frame, because "sigma_zz" alone is genuinely ambiguous here
     // and a viewer colouring by it has no way to tell which one they are looking at.
@@ -1988,14 +2003,25 @@ namespace StepCooling
 
     const unsigned int nCells = triangulation.n_active_cells();
     Vector<double> cell_damage(nCells);
-    Vector<double> cell_sigma_caxis_normal(nCells);   // LOCAL sigma_33 -- the damage driver
-    Vector<double> cell_sigma_basal_shear(nCells);    // LOCAL sqrt(s13^2 + s23^2)
-    Vector<double> cell_von_mises(nCells);            // frame independent
-    Vector<double> cell_pressure(nCells);             // frame independent
-    Vector<double> cell_driving_ratio(nCells);        // sigma_caxis_normal / threshold
+    Vector<double> cell_sigma_33(nCells);          // LOCAL: normal to the basal plane -- the driver
+    Vector<double> cell_tau_basal(nCells);         // LOCAL: sqrt(sigma_13^2 + sigma_23^2)
+    Vector<double> cell_von_mises(nCells);         // frame independent
+    Vector<double> cell_pressure(nCells);          // frame independent
+    Vector<double> cell_driving_ratio(nCells);     // sigma_33 / threshold
+
+    // Complete tensors, only when asked for. Local: 11, 22, 12, 13, 23 (33 is always written
+    // above, so it is not repeated here). Global: all six.
+    static const std::array<const char *, 5> localNames{{
+      "sigma_11", "sigma_22", "sigma_12", "sigma_13", "sigma_23"}};
+    static const std::array<const char *, 6> globalNames{{
+      "sigma_xx", "sigma_yy", "sigma_zz", "sigma_xy", "sigma_xz", "sigma_yz"}};
+    std::array<Vector<double>, 5> cell_sigma_local;
     std::array<Vector<double>, 6> cell_sigma_global;
     if (writeFullTensor)
+    {
+      for (auto &v : cell_sigma_local)  v.reinit(nCells);
       for (auto &v : cell_sigma_global) v.reinit(nCells);
+    }
 
     std::vector<Tensor<2, dim>> gradients(n_q_points);
 
@@ -2007,8 +2033,16 @@ namespace StepCooling
       const Tensor<2, dim> rotGlobalToLocal = getRotTensorGlobalToLocal(cell->material_id());
       const Tensor<2, dim> rotLocalToGlobal = transpose(rotGlobalToLocal);
 
-      double damage = 0.0, sigmaCaxis = 0.0, basalShear = 0.0, vonMises = 0.0, pressure = 0.0;
-      SymmetricTensor<2, dim> globalStressAvg;
+      // Average the TENSOR over the quadrature points once, then derive every scalar from that
+      // one cell tensor. The alternative -- averaging each scalar pointwise -- is not
+      // self-consistent for the nonlinear ones: mean(|x|) != |mean(x)|, so tau_basal would not
+      // equal hypot(sigma_13, sigma_23) and a viewer recomputing it in ParaView would get a
+      // different number than the file reports. (Measured at 6e-4 relative before this change,
+      // i.e. far above float32 noise, and it grows wherever the field varies within a cell.)
+      // Doing it this way, every array is a function of one well-defined per-cell tensor and
+      // ParaView reproduces any of them exactly.
+      double damage = 0.0;
+      SymmetricTensor<2, dim> localStressAvg;
 
       for (unsigned int q = 0; q < n_q_points; ++q)
       {
@@ -2016,40 +2050,40 @@ namespace StepCooling
           dealii::symmetrize(gradients[q]) + macroscopicStrain;
         const SymmetricTensor<2, dim> localStrain =
           Physics::Transformations::basis_transformation(globalStrain, rotGlobalToLocal);
-        const SymmetricTensor<2, dim> localStress =
-          getLocalStressTensor(localStrain, qp_damage[q]->damage, curT);
-
-        damage     += qp_damage[q]->damage;
-        sigmaCaxis += localStress[dim-1][dim-1];
-        // Shear ON the basal planes: the components with one index along c and one in-plane.
-        // The current kinetic law does NOT read this -- it is written so that its magnitude
-        // relative to the c-axis normal stress can be judged, i.e. so the modelling choice to
-        // ignore basal shear can be checked rather than assumed.
-        basalShear += std::sqrt(localStress[0][dim-1] * localStress[0][dim-1] +
-                                localStress[1][dim-1] * localStress[1][dim-1]);
-        // Invariants: identical in either frame, so no ambiguity for the viewer.
-        vonMises += std::sqrt(1.5 * (deviator(localStress) * deviator(localStress)));
-        pressure += -trace(localStress) / dim;   // positive in compression
-
-        if (writeFullTensor)
-          globalStressAvg +=
-            Physics::Transformations::basis_transformation(localStress, rotLocalToGlobal);
+        damage         += qp_damage[q]->damage;
+        localStressAvg += getLocalStressTensor(localStrain, qp_damage[q]->damage, curT);
       }
+      damage         /= n_q_points;
+      localStressAvg /= n_q_points;
 
       const unsigned int idx = cell->active_cell_index();
-      cell_damage[idx]              = damage     / n_q_points;
-      cell_sigma_caxis_normal[idx]  = sigmaCaxis / n_q_points;
-      cell_sigma_basal_shear[idx]   = basalShear / n_q_points;
-      cell_von_mises[idx]           = vonMises   / n_q_points;
-      cell_pressure[idx]            = pressure   / n_q_points;
+      cell_damage[idx]   = damage;
+      cell_sigma_33[idx] = localStressAvg[2][2];
+      // Shear ON the basal planes: the two components with one index along c. The current
+      // kinetic law reads ONLY sigma_33, so this is written to let that modelling choice be
+      // checked rather than assumed -- and it is the quantity an inelastic basal-slip mechanism
+      // would read if one is added later, which the team is currently discussing.
+      cell_tau_basal[idx] = std::sqrt(localStressAvg[0][2] * localStressAvg[0][2] +
+                                      localStressAvg[1][2] * localStressAvg[1][2]);
+      // Invariants: identical in either frame, so there is no frame for a viewer to get wrong.
+      cell_von_mises[idx] =
+        std::sqrt(1.5 * (deviator(localStressAvg) * deviator(localStressAvg)));
+      cell_pressure[idx] = -trace(localStressAvg) / dim;   // positive in compression
       // > 1 means this grain is above threshold and its damage is actively growing. The single
       // most legible scalar for the story: threshold it at 1 in ParaView and what remains is
       // exactly the set of grains driving the damage seen in the `damage` array.
-      cell_driving_ratio[idx]       = cell_sigma_caxis_normal[idx] / stressThreshold;
+      cell_driving_ratio[idx] = cell_sigma_33[idx] / stressThreshold;
 
       if (writeFullTensor)
       {
-        globalStressAvg /= n_q_points;
+        const SymmetricTensor<2, dim> globalStressAvg =
+          Physics::Transformations::basis_transformation(localStressAvg, rotLocalToGlobal);
+        // Order must match localNames / globalNames above.
+        cell_sigma_local[0][idx] = localStressAvg[0][0];
+        cell_sigma_local[1][idx] = localStressAvg[1][1];
+        cell_sigma_local[2][idx] = localStressAvg[0][1];
+        cell_sigma_local[3][idx] = localStressAvg[0][2];
+        cell_sigma_local[4][idx] = localStressAvg[1][2];
         cell_sigma_global[0][idx] = globalStressAvg[0][0];
         cell_sigma_global[1][idx] = globalStressAvg[1][1];
         cell_sigma_global[2][idx] = globalStressAvg[2][2];
@@ -2060,18 +2094,17 @@ namespace StepCooling
     }
 
     data_out.add_data_vector(cell_damage, "damage");
-    data_out.add_data_vector(cell_sigma_caxis_normal, "sigma_caxis_normal_local");
-    data_out.add_data_vector(cell_sigma_basal_shear, "sigma_basal_shear_local");
+    data_out.add_data_vector(cell_sigma_33, "sigma_33");
+    data_out.add_data_vector(cell_tau_basal, "tau_basal");
     data_out.add_data_vector(cell_von_mises, "von_mises");
     data_out.add_data_vector(cell_pressure, "pressure");
     data_out.add_data_vector(cell_driving_ratio, "damage_driving_ratio");
     if (writeFullTensor)
     {
-      static const std::array<const char *, 6> names{{
-        "sigma_global_xx", "sigma_global_yy", "sigma_global_zz",
-        "sigma_global_xy", "sigma_global_xz", "sigma_global_yz"}};
-      for (unsigned int k = 0; k < 6; ++k)
-        data_out.add_data_vector(cell_sigma_global[k], names[k]);
+      for (unsigned int k = 0; k < localNames.size(); ++k)
+        data_out.add_data_vector(cell_sigma_local[k], localNames[k]);
+      for (unsigned int k = 0; k < globalNames.size(); ++k)
+        data_out.add_data_vector(cell_sigma_global[k], globalNames[k]);
     }
 
     data_out.build_patches();
@@ -2458,9 +2491,9 @@ namespace StepCooling
         const SymmetricTensor<2, dim> localStress =
           getLocalStressTensor(localStrain, cell_damage[q]->damage, curT);
 
-        // sigma_zz in the LOCAL frame: the c-axis normal stress, which is what drives the
-        // kinetic law. A global-frame sigma_zz would mean nothing here, since every grain has a
-        // different c-axis.
+        // sigma_33 -- LOCAL frame, i.e. normal to THIS grain's basal plane, which is what
+        // drives the kinetic law. sigma_zz (global) would mean something quite different and is
+        // not what the damage law reads.
         const double sZZ = localStress[dim-1][dim-1];
         maxSigmaZZ = std::max(maxSigmaZZ, sZZ);
         minSigmaZZ = std::min(minSigmaZZ, sZZ);
@@ -2490,7 +2523,7 @@ namespace StepCooling
               << ", iteration " << iterSolverStepNum << " (T = " << curT << "):" << std::endl
               << "   Cells: " << n_active_cells << ", DoFs: " << n_dofs
               << ", CG iterations = " << lastCgIterations << std::endl
-              << "   local sigma_zz: min=" << minSigmaZZ << ", max=" << maxSigmaZZ
+              << "   sigma_33 (local): min=" << minSigmaZZ << ", max=" << maxSigmaZZ
               << ", tension fraction=" << tensionFraction
               << ", above threshold=" << thresholdFraction << std::endl
               << "   damage: mean=" << meanDamage << ", max=" << maxDamage << std::endl

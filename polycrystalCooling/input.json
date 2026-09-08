@@ -213,6 +213,13 @@
    "documentation": "Frequency of output (in terms of number of steps)",
    "pattern": "27",
    "pattern_description": "[Integer range 1...2147483647 (inclusive)]"
+  },
+  "WriteFullStressTensor": {
+   "value": "false",
+   "default_value": "false",
+   "documentation": "Also write the complete stress tensor in BOTH frames (five remaining local components plus all six global). Off by default; on for post-hoc analysis.",
+   "pattern": "33",
+   "pattern_description": "[Bool]"
   }
  },
  "SolverParameters": {
@@ -280,7 +287,7 @@
  },
  "BoundaryConditions": {
   "Type": {
-   "value": "zeroDisplacement",
+   "value": "freeSurface",
    "default_value": "zeroDisplacement",
    "documentation": "zeroDisplacement | freeSurface | periodic. Start with zeroDisplacement to exercise the grain machinery, then freeSurface for a real <sigma>=0 free-cooling state. periodic is not implemented yet.",
    "pattern": "31",
