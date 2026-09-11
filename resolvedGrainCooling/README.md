@@ -55,6 +55,10 @@ on identical problems. See **Measurements** below for what was actually found, i
   as `invalid_unsigned_int` so MPI does not cap threading, leaving
   `ParallelizationParameters/NumberOfThreads` as the single control.
 
+See **`scaling_options.md`** for the MPI vs matrix-free evaluation: what each wins, what gets
+rewritten, what it costs in readability -- and three optimisations that need no rewrite at all and
+are worth doing first.
+
 ## Measurements
 
 Isolating the refined mesh (run at 1 cycle and at 2, and differencing, since the timer aggregates):
