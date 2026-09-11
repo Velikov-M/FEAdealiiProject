@@ -89,12 +89,14 @@ def summarize(log):
     return out
 
 
-def bc_sweep(seed, dry_run):
+def bc_sweep(seed, dry_run, only=None):
     study = ROOT / "results" / "bc-resolution-sweep"
     rows = []
     for bc in ("zeroDisplacement", "freeSurface", "periodic"):
         for refin, cpg in RESOLUTIONS.items():
             name = f"{bc}_{cpg:02d}cpg_seed{seed}"
+            if only and not any(f in name for f in only):
+                continue
             print(f"running {name} ...", flush=True)
             overrides = {
                 ("BoundaryConditions", "Type"): bc,
@@ -107,8 +109,19 @@ def bc_sweep(seed, dry_run):
             row.update(summarize(log))
             rows.append(row)
             print(f"  {secs:7.1f} s   maxDamage={row.get('maxDamage','-')}")
-    (study / "summary.json").write_text(json.dumps(rows, indent=1))
-    print(f"\nwrote {study/'summary.json'}")
+    merge_summary(study, rows, key=("bc", "cellsPerGrain"))
+
+
+def merge_summary(study, rows, key):
+    """Keep rows from previous invocations that this one did not re-run."""
+    path = study / "summary.json"
+    existing = json.loads(path.read_text()) if path.exists() else []
+    ident = lambda r: tuple(r[k] for k in key)
+    fresh = {ident(r) for r in rows}
+    merged = [r for r in existing if ident(r) not in fresh] + rows
+    merged.sort(key=ident)
+    path.write_text(json.dumps(merged, indent=1))
+    print(f"\nwrote {path} ({len(merged)} runs)")
 
 
 def seed_sweep(seeds, dry_run):
@@ -139,11 +152,32 @@ if __name__ == "__main__":
     ap.add_argument("--seed", type=int, default=20260905)
     ap.add_argument("--seeds", type=int, nargs="+",
                     default=[20260905, 11, 22, 33, 44, 55, 66, 77])
+    ap.add_argument("--only", nargs="+",
+                    help="substring filter on run names, to re-run a subset")
+    ap.add_argument("--rebuild-summary", action="store_true",
+                    help="regenerate summary.json from the run logs already on disk, without "
+                         "re-running anything")
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
-    if not (a.bc_sweep or a.seed_sweep):
-        ap.error("pick --bc-sweep and/or --seed-sweep")
+    if not (a.bc_sweep or a.seed_sweep or a.rebuild_summary):
+        ap.error("pick --bc-sweep, --seed-sweep or --rebuild-summary")
+    if a.rebuild_summary:
+        study = ROOT / "results" / "bc-resolution-sweep"
+        rows = []
+        for d in sorted(study.iterdir()):
+            if not d.is_dir():
+                continue
+            log = d / f"{d.name}.log"
+            if not log.exists() or "Wrote" not in log.read_text():
+                print(f"  skipping incomplete {d.name}")
+                continue
+            bc, cpg, _ = d.name.split("_")
+            row = {"bc": bc, "cellsPerGrain": int(cpg.replace("cpg", ""))}
+            row.update(summarize(log))
+            rows.append(row)
+        merge_summary(study, rows, key=("bc", "cellsPerGrain"))
+        sys.exit(0)
     if a.bc_sweep:
-        bc_sweep(a.seed, a.dry_run)
+        bc_sweep(a.seed, a.dry_run, a.only)
     if a.seed_sweep:
         seed_sweep(a.seeds, a.dry_run)

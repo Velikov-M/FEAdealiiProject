@@ -2810,10 +2810,11 @@ namespace StepCooling
     const bool uniformOrientation = prm.get_bool({"BoundaryConditions"}, "UniformOrientation");
     const unsigned int orientationSeed =
       prm.get_integer({"BoundaryConditions"}, "OrientationSeed");
-    // Refine BEFORE assigning grains: assignGrains() works off cell centroids, so it lands the
-    // right grain on every child automatically and the grain count is unaffected.
+    // ORDER IS LOAD-BEARING; see the assignBoundaryIds() call below, which must run on the
+    // COARSE mesh and therefore BEFORE this refinement.
     const unsigned int initialRefinements =
       prm.get_integer({"MeshRefinementParameters"}, "InitialGlobalRefinements");
+    assignBoundaryIds();
     if (initialRefinements > 0)
       triangulation.refine_global(initialRefinements);
 
@@ -2871,7 +2872,15 @@ namespace StepCooling
                 << " (expect ~0.3333)" << std::endl;
     }
 
-    assignBoundaryIds();
+    // Boundary ids were assigned above, on the COARSE mesh, deliberately.
+    // GridTools::collect_periodic_faces() matches faces "on the coarsest mesh level" (its own
+    // words), while assignBoundaryIds() loops over ACTIVE cells. Refine first and the level-0
+    // faces keep boundary_id 0, collect_periodic_faces matches nothing, and
+    // make_periodicity_constraints adds NO CONSTRAINTS -- leaving the body held only by the
+    // single pinned vertex. That is not a crash: it produced a plausible-looking run whose
+    // homogenized stiffness came out 94% asymmetric, caught only by the Cbar symmetry assertion
+    // in solve_with_zero_mean_stress(). Child faces inherit their parent's id, so assigning on
+    // the coarse mesh covers every refinement level.
 
     // Outer mesh-refinement-cycle loop, for mesh convergence studies: each cycle refines
     // (cycle 0 just does the initial setup) and then re-solves the *entire* temperature
