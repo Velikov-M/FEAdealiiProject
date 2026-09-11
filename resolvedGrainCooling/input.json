@@ -201,14 +201,14 @@
  },
  "OutputParameters": {
   "OutputDirectory": {
-   "value": "/home/dealii/myWork/coolingModelRevision/resolvedGrainCooling/results/bc-resolution-sweep/zeroDisplacement_08cpg_seed20260905",
+   "value": "/home/dealii/myWork/coolingModelRevision/resolvedGrainCooling/results/seed-sweep/periodic_08cpg_seed77",
    "default_value": "output",
    "documentation": "Directory to store output files",
    "pattern": "25",
    "pattern_description": "[DirectoryName]"
   },
   "OutputFileNamePrefix": {
-   "value": "zeroDisplacement_08cpg_seed20260905",
+   "value": "periodic_08cpg_seed77",
    "default_value": "solution",
    "documentation": "Prefix for output file names",
    "pattern": "26",
@@ -322,14 +322,14 @@
  },
  "BoundaryConditions": {
   "Type": {
-   "value": "zeroDisplacement",
+   "value": "periodic",
    "default_value": "zeroDisplacement",
    "documentation": "zeroDisplacement | freeSurface | periodic. Start with zeroDisplacement to exercise the grain machinery, then freeSurface for a real <sigma>=0 free-cooling state. periodic is not implemented yet.",
    "pattern": "31",
    "pattern_description": "[Selection zeroDisplacement|freeSurface|periodic ]"
   },
   "OrientationSeed": {
-   "value": "20260905",
+   "value": "77",
    "default_value": "20260905",
    "documentation": "Seed for per-grain random c-axis orientations. RECORD THIS with any result.",
    "pattern": "32",

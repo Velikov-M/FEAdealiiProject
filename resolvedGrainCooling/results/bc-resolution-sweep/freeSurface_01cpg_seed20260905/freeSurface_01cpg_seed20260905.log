@@ -1,0 +1,233 @@
+Boundary conditions: freeSurface
+Threading: WorkStream, n_threads=12 (hardware concurrency 12)
+Grains: 10^3 = 1000, 1000 cells => 1 elements per grain
+Orientations: seed=20260905, |mean c-axis|=0.0210999 (expect ~0), mean c_z^2=0.331402 (expect ~0.3333)
+Boundary faces per pair: x=100, y=100, z=100
+Refinement cycle 0, temperature step 1, iteration 1 (T = 1980):
+   Cells: 1000, DoFs: 3993, CG iterations = 174
+   sigma_33 (local): min=-1.26239e+07, max=2.66387e+07, tension fraction=0.996625, above threshold=0
+   damage: mean=0, max=0
+   <sigma> norm=0.0216899 (trace/3 = 0.00380507)
+    convergence check: relSolInc=1 (tol 1e-05), maxDamageInc=0 (tol 1e-05), relResidual=6.33525e-09 (tol 0.0001)
+Refinement cycle 0, temperature step 1, iteration 2 (T = 1980):
+   Cells: 1000, DoFs: 3993, CG iterations = 0
+   sigma_33 (local): min=-1.26239e+07, max=2.66387e+07, tension fraction=0.996625, above threshold=0
+   damage: mean=0, max=0
+   <sigma> norm=0.0216899 (trace/3 = 0.00380507)
+    convergence check: relSolInc=0 (tol 1e-05), maxDamageInc=0 (tol 1e-05), relResidual=6.33525e-09 (tol 0.0001)
+Refinement cycle 0, temperature step 2, iteration 1 (T = 1960):
+   Cells: 1000, DoFs: 3993, CG iterations = 172
+   sigma_33 (local): min=-2.52478e+07, max=5.32775e+07, tension fraction=0.996625, above threshold=0
+   damage: mean=0, max=0
+   <sigma> norm=0.104151 (trace/3 = 0.00971125)
+    convergence check: relSolInc=0.5 (tol 1e-05), maxDamageInc=0 (tol 1e-05), relResidual=8.46946e-09 (tol 0.0001)
+Refinement cycle 0, temperature step 2, iteration 2 (T = 1960):
+   Cells: 1000, DoFs: 3993, CG iterations = 0
+   sigma_33 (local): min=-2.52478e+07, max=5.32775e+07, tension fraction=0.996625, above threshold=0
+   damage: mean=0, max=0
+   <sigma> norm=0.104151 (trace/3 = 0.00971125)
+    convergence check: relSolInc=0 (tol 1e-05), maxDamageInc=0 (tol 1e-05), relResidual=8.46946e-09 (tol 0.0001)
+Refinement cycle 0, temperature step 3, iteration 1 (T = 1940):
+   Cells: 1000, DoFs: 3993, CG iterations = 171
+   sigma_33 (local): min=-3.78718e+07, max=7.99162e+07, tension fraction=0.996625, above threshold=0
+   damage: mean=0, max=0
+   <sigma> norm=0.201223 (trace/3 = 0.0126429)
+    convergence check: relSolInc=0.333333 (tol 1e-05), maxDamageInc=0 (tol 1e-05), relResidual=8.86391e-09 (tol 0.0001)
+Refinement cycle 0, temperature step 3, iteration 2 (T = 1940):
+   Cells: 1000, DoFs: 3993, CG iterations = 0
+   sigma_33 (local): min=-3.78718e+07, max=7.99162e+07, tension fraction=0.996625, above threshold=0
+   damage: mean=0, max=0
+   <sigma> norm=0.201223 (trace/3 = 0.0126429)
+    convergence check: relSolInc=0 (tol 1e-05), maxDamageInc=0 (tol 1e-05), relResidual=8.86391e-09 (tol 0.0001)
+Refinement cycle 0, temperature step 4, iteration 1 (T = 1920):
+   Cells: 1000, DoFs: 3993, CG iterations = 170
+   sigma_33 (local): min=-5.04957e+07, max=1.06555e+08, tension fraction=0.996625, above threshold=0
+   damage: mean=0, max=0
+   <sigma> norm=0.362123 (trace/3 = 0.0175829)
+    convergence check: relSolInc=0.25 (tol 1e-05), maxDamageInc=0 (tol 1e-05), relResidual=9.36807e-09 (tol 0.0001)
+Refinement cycle 0, temperature step 4, iteration 2 (T = 1920):
+   Cells: 1000, DoFs: 3993, CG iterations = 0
+   sigma_33 (local): min=-5.04957e+07, max=1.06555e+08, tension fraction=0.996625, above threshold=0
+   damage: mean=0, max=0
+   <sigma> norm=0.362123 (trace/3 = 0.0175829)
+    convergence check: relSolInc=0 (tol 1e-05), maxDamageInc=0 (tol 1e-05), relResidual=9.36807e-09 (tol 0.0001)
+Refinement cycle 0, temperature step 5, iteration 1 (T = 1900):
+   Cells: 1000, DoFs: 3993, CG iterations = 170
+   sigma_33 (local): min=-6.31196e+07, max=1.33194e+08, tension fraction=0.996625, above threshold=0
+   damage: mean=0, max=0
+   <sigma> norm=0.362116 (trace/3 = 0.0175798)
+    convergence check: relSolInc=0.2 (tol 1e-05), maxDamageInc=0 (tol 1e-05), relResidual=7.49445e-09 (tol 0.0001)
+Refinement cycle 0, temperature step 5, iteration 2 (T = 1900):
+   Cells: 1000, DoFs: 3993, CG iterations = 0
+   sigma_33 (local): min=-6.31196e+07, max=1.33194e+08, tension fraction=0.996625, above threshold=0
+   damage: mean=0, max=0
+   <sigma> norm=0.362116 (trace/3 = 0.0175798)
+    convergence check: relSolInc=0 (tol 1e-05), maxDamageInc=0 (tol 1e-05), relResidual=7.49445e-09 (tol 0.0001)
+Refinement cycle 0, temperature step 6, iteration 1 (T = 1880):
+   Cells: 1000, DoFs: 3993, CG iterations = 169
+   sigma_33 (local): min=-7.57435e+07, max=1.59832e+08, tension fraction=0.996625, above threshold=0
+   damage: mean=0, max=0
+   <sigma> norm=0.572475 (trace/3 = 0.0364651)
+    convergence check: relSolInc=0.166667 (tol 1e-05), maxDamageInc=0 (tol 1e-05), relResidual=8.77941e-09 (tol 0.0001)
+Refinement cycle 0, temperature step 6, iteration 2 (T = 1880):
+   Cells: 1000, DoFs: 3993, CG iterations = 0
+   sigma_33 (local): min=-7.57435e+07, max=1.59832e+08, tension fraction=0.996625, above threshold=0
+   damage: mean=0, max=0
+   <sigma> norm=0.572475 (trace/3 = 0.0364651)
+    convergence check: relSolInc=0 (tol 1e-05), maxDamageInc=0 (tol 1e-05), relResidual=8.77941e-09 (tol 0.0001)
+Refinement cycle 0, temperature step 7, iteration 1 (T = 1860):
+   Cells: 1000, DoFs: 3993, CG iterations = 169
+   sigma_33 (local): min=-8.83674e+07, max=1.86471e+08, tension fraction=0.996625, above threshold=0
+   damage: mean=0, max=0
+   <sigma> norm=0.572477 (trace/3 = 0.0364657)
+    convergence check: relSolInc=0.142857 (tol 1e-05), maxDamageInc=0 (tol 1e-05), relResidual=7.52521e-09 (tol 0.0001)
+Refinement cycle 0, temperature step 7, iteration 2 (T = 1860):
+   Cells: 1000, DoFs: 3993, CG iterations = 0
+   sigma_33 (local): min=-8.83674e+07, max=1.86471e+08, tension fraction=0.996625, above threshold=0
+   damage: mean=0, max=0
+   <sigma> norm=0.572477 (trace/3 = 0.0364657)
+    convergence check: relSolInc=0 (tol 1e-05), maxDamageInc=0 (tol 1e-05), relResidual=7.52521e-09 (tol 0.0001)
+Refinement cycle 0, temperature step 8, iteration 1 (T = 1840):
+   Cells: 1000, DoFs: 3993, CG iterations = 169
+   sigma_33 (local): min=-1.00991e+08, max=2.04326e+08, tension fraction=0.996625, above threshold=0.000125
+   damage: mean=5.08319e-06, max=0.0406656
+   <sigma> norm=1097.92 (trace/3 = -365.967)
+    convergence check: relSolInc=0.125 (tol 1e-05), maxDamageInc=0.0406656 (tol 1e-05), relResidual=0.000166611 (tol 0.0001)
+Refinement cycle 0, temperature step 8, iteration 2 (T = 1840):
+   Cells: 1000, DoFs: 3993, CG iterations = 152
+   sigma_33 (local): min=-1.00991e+08, max=2.04207e+08, tension fraction=0.996625, above threshold=0.000125
+   damage: mean=6.46306e-06, max=0.0517045
+   <sigma> norm=301.242 (trace/3 = -100.47)
+    convergence check: relSolInc=0.00115939 (tol 1e-05), maxDamageInc=0.0110389 (tol 1e-05), relResidual=4.57248e-05 (tol 0.0001)
+Refinement cycle 0, temperature step 8, iteration 3 (T = 1840):
+   Cells: 1000, DoFs: 3993, CG iterations = 149
+   sigma_33 (local): min=-1.00991e+08, max=2.04821e+08, tension fraction=0.996625, above threshold=0.000125
+   damage: mean=6.46896e-06, max=0.0517517
+   <sigma> norm=1.49252 (trace/3 = -0.595835)
+    convergence check: relSolInc=0.000319091 (tol 1e-05), maxDamageInc=4.71963e-05 (tol 1e-05), relResidual=1.96138e-07 (tol 0.0001)
+Refinement cycle 0, temperature step 8, iteration 4 (T = 1840):
+   Cells: 1000, DoFs: 3993, CG iterations = 30
+   sigma_33 (local): min=-1.00991e+08, max=2.04824e+08, tension fraction=0.996625, above threshold=0.000125
+   damage: mean=6.46893e-06, max=0.0517515
+   <sigma> norm=2.07751 (trace/3 = 0.0173894)
+    convergence check: relSolInc=8.80413e-07 (tol 1e-05), maxDamageInc=1.7677e-07 (tol 1e-05), relResidual=9.28475e-09 (tol 0.0001)
+Refinement cycle 0, temperature step 9, iteration 1 (T = 1820):
+   Cells: 1000, DoFs: 3993, CG iterations = 168
+   sigma_33 (local): min=-1.13615e+08, max=2.0598e+08, tension fraction=0.996625, above threshold=0.017375
+   damage: mean=0.00024121, max=0.150959
+   <sigma> norm=31466.7 (trace/3 = -16766.4)
+    convergence check: relSolInc=0.111112 (tol 1e-05), maxDamageInc=0.0992076 (tol 1e-05), relResidual=0.00125203 (tol 0.0001)
+Refinement cycle 0, temperature step 9, iteration 2 (T = 1820):
+   Cells: 1000, DoFs: 3993, CG iterations = 157
+   sigma_33 (local): min=-1.13618e+08, max=2.06038e+08, tension fraction=0.9965, above threshold=0.0175
+   damage: mean=0.000253989, max=0.173596
+   <sigma> norm=2093.03 (trace/3 = -950.128)
+    convergence check: relSolInc=0.00315036 (tol 1e-05), maxDamageInc=0.0226372 (tol 1e-05), relResidual=0.000128445 (tol 0.0001)
+Refinement cycle 0, temperature step 9, iteration 3 (T = 1820):
+   Cells: 1000, DoFs: 3993, CG iterations = 151
+   sigma_33 (local): min=-1.13618e+08, max=2.06314e+08, tension fraction=0.9965, above threshold=0.0175
+   damage: mean=0.000254632, max=0.177938
+   <sigma> norm=184.466 (trace/3 = -53.5024)
+    convergence check: relSolInc=0.000732792 (tol 1e-05), maxDamageInc=0.00434135 (tol 1e-05), relResidual=2.15527e-05 (tol 0.0001)
+Refinement cycle 0, temperature step 9, iteration 4 (T = 1820):
+   Cells: 1000, DoFs: 3993, CG iterations = 124
+   sigma_33 (local): min=-1.13619e+08, max=2.06517e+08, tension fraction=0.9965, above threshold=0.0175
+   damage: mean=0.000254695, max=0.178219
+   <sigma> norm=12.4023 (trace/3 = -4.83492)
+    convergence check: relSolInc=0.000142483 (tol 1e-05), maxDamageInc=0.000281381 (tol 1e-05), relResidual=1.33494e-06 (tol 0.0001)
+Refinement cycle 0, temperature step 9, iteration 5 (T = 1820):
+   Cells: 1000, DoFs: 3993, CG iterations = 77
+   sigma_33 (local): min=-1.13619e+08, max=2.06535e+08, tension fraction=0.9965, above threshold=0.0175
+   damage: mean=0.000254688, max=0.178219
+   <sigma> norm=4.11906 (trace/3 = -0.062103)
+    convergence check: relSolInc=8.3026e-06 (tol 1e-05), maxDamageInc=7.86917e-06 (tol 1e-05), relResidual=6.93411e-08 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 1 (T = 1800):
+   Cells: 1000, DoFs: 3993, CG iterations = 168
+   sigma_33 (local): min=-1.26243e+08, max=2.05901e+08, tension fraction=0.9965, above threshold=0.34075
+   damage: mean=0.00910409, max=0.26511
+   <sigma> norm=1.11857e+06 (trace/3 = -643607)
+    convergence check: relSolInc=0.100007 (tol 1e-05), maxDamageInc=0.0930932 (tol 1e-05), relResidual=0.00908807 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 2 (T = 1800):
+   Cells: 1000, DoFs: 3993, CG iterations = 160
+   sigma_33 (local): min=-1.26182e+08, max=2.06079e+08, tension fraction=0.9965, above threshold=0.34225
+   damage: mean=0.00941433, max=0.285447
+   <sigma> norm=39664.5 (trace/3 = -22735.3)
+    convergence check: relSolInc=0.00437886 (tol 1e-05), maxDamageInc=0.0203369 (tol 1e-05), relResidual=0.000526065 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 3 (T = 1800):
+   Cells: 1000, DoFs: 3993, CG iterations = 154
+   sigma_33 (local): min=-1.2618e+08, max=2.06181e+08, tension fraction=0.9965, above threshold=0.342125
+   damage: mean=0.00942121, max=0.289545
+   <sigma> norm=1011.99 (trace/3 = -530.031)
+    convergence check: relSolInc=0.000814402 (tol 1e-05), maxDamageInc=0.00409839 (tol 1e-05), relResidual=5.13463e-05 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 4 (T = 1800):
+   Cells: 1000, DoFs: 3993, CG iterations = 126
+   sigma_33 (local): min=-1.2618e+08, max=2.06218e+08, tension fraction=0.9965, above threshold=0.342125
+   damage: mean=0.0094215, max=0.290196
+   <sigma> norm=68.7656 (trace/3 = -24.2011)
+    convergence check: relSolInc=0.000154187 (tol 1e-05), maxDamageInc=0.000651504 (tol 1e-05), relResidual=6.19614e-06 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 5 (T = 1800):
+   Cells: 1000, DoFs: 3993, CG iterations = 79
+   sigma_33 (local): min=-1.2618e+08, max=2.06229e+08, tension fraction=0.9965, above threshold=0.342125
+   damage: mean=0.0094215, max=0.290231
+   <sigma> norm=4.60406 (trace/3 = -0.669782)
+    convergence check: relSolInc=2.15896e-05 (tol 1e-05), maxDamageInc=3.46655e-05 (tol 1e-05), relResidual=2.13865e-07 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 6 (T = 1800):
+   Cells: 1000, DoFs: 3993, CG iterations = 96
+   sigma_33 (local): min=-1.2618e+08, max=2.06229e+08, tension fraction=0.9965, above threshold=0.342125
+   damage: mean=0.0094215, max=0.290232
+   <sigma> norm=1.10997 (trace/3 = -0.134114)
+    convergence check: relSolInc=1.52388e-05 (tol 1e-05), maxDamageInc=6.70833e-07 (tol 1e-05), relResidual=1.50328e-08 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 7 (T = 1800):
+   Cells: 1000, DoFs: 3993, CG iterations = 1
+   sigma_33 (local): min=-1.2618e+08, max=2.06229e+08, tension fraction=0.9965, above threshold=0.342125
+   damage: mean=0.0094215, max=0.290232
+   <sigma> norm=1.11321 (trace/3 = 0.0370586)
+    convergence check: relSolInc=2.33727e-09 (tol 1e-05), maxDamageInc=1.0481e-07 (tol 1e-05), relResidual=8.72824e-09 (tol 0.0001)
+cycle tempStep cells dofs meanDamage maxDamage maxSigmaZZ minSigmaZZ tensionFrac meanStressNorm 
+    0        1  1000 3993      0.000     0.000  2.664e+07 -1.262e+07       0.997      2.169e-02 
+    0        1  1000 3993      0.000     0.000  2.664e+07 -1.262e+07       0.997      2.169e-02 
+    0        2  1000 3993      0.000     0.000  5.328e+07 -2.525e+07       0.997      1.042e-01 
+    0        2  1000 3993      0.000     0.000  5.328e+07 -2.525e+07       0.997      1.042e-01 
+    0        3  1000 3993      0.000     0.000  7.992e+07 -3.787e+07       0.997      2.012e-01 
+    0        3  1000 3993      0.000     0.000  7.992e+07 -3.787e+07       0.997      2.012e-01 
+    0        4  1000 3993      0.000     0.000  1.066e+08 -5.050e+07       0.997      3.621e-01 
+    0        4  1000 3993      0.000     0.000  1.066e+08 -5.050e+07       0.997      3.621e-01 
+    0        5  1000 3993      0.000     0.000  1.332e+08 -6.312e+07       0.997      3.621e-01 
+    0        5  1000 3993      0.000     0.000  1.332e+08 -6.312e+07       0.997      3.621e-01 
+    0        6  1000 3993      0.000     0.000  1.598e+08 -7.574e+07       0.997      5.725e-01 
+    0        6  1000 3993      0.000     0.000  1.598e+08 -7.574e+07       0.997      5.725e-01 
+    0        7  1000 3993      0.000     0.000  1.865e+08 -8.837e+07       0.997      5.725e-01 
+    0        7  1000 3993      0.000     0.000  1.865e+08 -8.837e+07       0.997      5.725e-01 
+    0        8  1000 3993      0.000     0.041  2.043e+08 -1.010e+08       0.997      1.098e+03 
+    0        8  1000 3993      0.000     0.052  2.042e+08 -1.010e+08       0.997      3.012e+02 
+    0        8  1000 3993      0.000     0.052  2.048e+08 -1.010e+08       0.997      1.493e+00 
+    0        8  1000 3993      0.000     0.052  2.048e+08 -1.010e+08       0.997      2.078e+00 
+    0        9  1000 3993      0.000     0.151  2.060e+08 -1.136e+08       0.997      3.147e+04 
+    0        9  1000 3993      0.000     0.174  2.060e+08 -1.136e+08       0.996      2.093e+03 
+    0        9  1000 3993      0.000     0.178  2.063e+08 -1.136e+08       0.996      1.845e+02 
+    0        9  1000 3993      0.000     0.178  2.065e+08 -1.136e+08       0.996      1.240e+01 
+    0        9  1000 3993      0.000     0.178  2.065e+08 -1.136e+08       0.996      4.119e+00 
+    0       10  1000 3993      0.009     0.265  2.059e+08 -1.262e+08       0.996      1.119e+06 
+    0       10  1000 3993      0.009     0.285  2.061e+08 -1.262e+08       0.996      3.966e+04 
+    0       10  1000 3993      0.009     0.290  2.062e+08 -1.262e+08       0.996      1.012e+03 
+    0       10  1000 3993      0.009     0.290  2.062e+08 -1.262e+08       0.996      6.877e+01 
+    0       10  1000 3993      0.009     0.290  2.062e+08 -1.262e+08       0.996      4.604e+00 
+    0       10  1000 3993      0.009     0.290  2.062e+08 -1.262e+08       0.996      1.110e+00 
+    0       10  1000 3993      0.009     0.290  2.062e+08 -1.262e+08       0.996      1.113e+00 
+Wrote /home/dealii/myWork/coolingModelRevision/resolvedGrainCooling/results/bc-resolution-sweep/freeSurface_01cpg_seed20260905/freeSurface_01cpg_seed20260905_macroscopic_history.csv (10 steps).
+Wrote ParaView time series polycrystalCooling.pvd (10 steps). Open THIS, not the individual .vtu files.
+
+
++---------------------------------------------+------------+------------+
+| Total wallclock time elapsed since start    |      2.34s |            |
+|                                             |            |            |
+| Section                         | no. calls |  wall time | % of total |
++---------------------------------+-----------+------------+------------+
+| Assemble system                 |        40 |     0.441s |        19% |
+| Grain stiffness cache           |        10 |    0.0042s |      0.18% |
+| Linear solver setup             |        30 |   0.00228s |         0% |
+| Predict damage increment        |        30 |     0.372s |        16% |
+| Setup of system                 |         1 |   0.00959s |      0.41% |
+| Solve system                    |        30 |     0.926s |        40% |
++---------------------------------+-----------+------------+------------+
+

@@ -1,0 +1,353 @@
+{
+ "InputFiles": {
+  "CellToMaterialFile": {
+   "value": "groupFile",
+   "default_value": "cell_to_material.txt",
+   "documentation": "Input file that maps each cell to a material ID",
+   "pattern": "29",
+   "pattern_description": "[Anything]"
+  },
+  "MeshFile": {
+   "value": "cube10cellsPerSide.msh",
+   "default_value": "mesh.msh",
+   "documentation": "Input mesh file in .msh format",
+   "pattern": "28",
+   "pattern_description": "[Anything]"
+  },
+  "OrientationFile": {
+   "value": "notUsedHere.txt",
+   "default_value": "orientation.txt",
+   "documentation": "Input file that provides orientation matrices for each cell",
+   "pattern": "30",
+   "pattern_description": "[Anything]"
+  }
+ },
+ "MaterialParameters": {
+  "DamageParameters": {
+   "StressThreshold": {
+    "value": "200e6",
+    "default_value": "200e6",
+    "documentation": "Stress threshold for damage activation",
+    "pattern": "13",
+    "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
+   },
+   "a_kineticParam": {
+    "value": "4.0",
+    "default_value": "1e-5",
+    "documentation": "Kinetic parameter a in the kinetic equation",
+    "pattern": "14",
+    "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
+   },
+   "m_kineticParam": {
+    "value": "2",
+    "default_value": "2",
+    "documentation": "Kinetic parameter m in the kinetic equation",
+    "pattern": "15",
+    "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
+   }
+  },
+  "LinearElasticityParameters": {
+   "C11_0": {
+    "value": "1060e9",
+    "default_value": "1060e9",
+    "documentation": "Elasticity tensor component C11 at reference temperature",
+    "pattern": "3",
+    "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
+   },
+   "C11_functionOfTemperature": {
+    "value": "1.0",
+    "default_value": "1.0",
+    "documentation": "Function of temperature for elasticity tensor component C11",
+    "pattern": "4",
+    "pattern_description": "[Anything]"
+   },
+   "C12_0": {
+    "value": "180e9",
+    "default_value": "180e9",
+    "documentation": "Elasticity tensor component C12 at reference temperature",
+    "pattern": "9",
+    "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
+   },
+   "C12_functionOfTemperature": {
+    "value": "1.0",
+    "default_value": "1.0",
+    "documentation": "Function of temperature for elasticity tensor component C12",
+    "pattern": "10",
+    "pattern_description": "[Anything]"
+   },
+   "C13_0": {
+    "value": "15e9",
+    "default_value": "15e9",
+    "documentation": "Elasticity tensor component C13 at reference temperature",
+    "pattern": "11",
+    "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
+   },
+   "C13_functionOfTemperature": {
+    "value": "1.0",
+    "default_value": "1.0",
+    "documentation": "Function of temperature for elasticity tensor component C13",
+    "pattern": "12",
+    "pattern_description": "[Anything]"
+   },
+   "C33_0": {
+    "value": "36.5e9",
+    "default_value": "36.5e9",
+    "documentation": "Elasticity tensor component C33 at reference temperature",
+    "pattern": "5",
+    "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
+   },
+   "C33_functionOfTemperature": {
+    "value": "1.0",
+    "default_value": "1.0",
+    "documentation": "Function of temperature for elasticity tensor component C33",
+    "pattern": "6",
+    "pattern_description": "[Anything]"
+   },
+   "C44_0": {
+    "value": "0.25e9",
+    "default_value": "0.25e9",
+    "documentation": "Elasticity tensor component C44 at reference temperature",
+    "pattern": "7",
+    "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
+   },
+   "C44_functionOfTemperature": {
+    "value": "1.0",
+    "default_value": "1.0",
+    "documentation": "Function of temperature for elasticity tensor component C44",
+    "pattern": "8",
+    "pattern_description": "[Anything]"
+   }
+  },
+  "ThermoElasticParameters": {
+   "alpha11_0": {
+    "value": "1.2e-6",
+    "default_value": "1e-5",
+    "documentation": "Basal-plane CTE alpha_a. Read from the Steward et al. curve at 1800-2000 K, where it plateaus at ~1.2e-6. FROM A FIGURE, not from source data.",
+    "pattern": "16",
+    "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
+   },
+   "alpha11_functionOfTemperature": {
+    "value": "1.0",
+    "default_value": "1.0",
+    "documentation": "Function of temperature for thermal expansion coefficient at a-axis direction",
+    "pattern": "17",
+    "pattern_description": "[Anything]"
+   },
+   "alpha33_0": {
+    "value": "32e-6",
+    "default_value": "1e-8",
+    "documentation": "c-axis CTE alpha_c. Read from the Steward et al. curve at 1800-2000 K (~32e-6). The previous 27e-6 corresponded to ~600 K on that same curve. FROM A FIGURE, not from source data.",
+    "pattern": "18",
+    "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
+   },
+   "alpha33_functionOfTemperature": {
+    "value": "1.0",
+    "default_value": "1.0",
+    "documentation": "Function of temperature for thermal expansion coefficient at c-axis direction",
+    "pattern": "19",
+    "pattern_description": "[Anything]"
+   }
+  }
+ },
+ "MeshRefinementParameters": {
+  "NumberOfRefinementCycles": {
+   "value": "1"
+  },
+  "RefinementStrategy": {
+   "value": "uniform"
+  },
+  "FractionToRefine": {
+   "value": "0.3"
+  },
+  "FractionToCoarsen": {
+   "value": "0.03"
+  },
+  "InitialGlobalRefinements": {
+   "value": "1",
+   "default_value": "0",
+   "documentation": "Uniform refinements applied once after reading the mesh: 0->1, 1->8, 2->64 elements per grain.",
+   "pattern": "39",
+   "pattern_description": "[Integer range 0...2147483647 (inclusive)]"
+  }
+ },
+ "ModelParameters": {
+  "InitialTemperature": {
+   "value": "2000",
+   "default_value": "2000",
+   "documentation": "Initial temperature of the body",
+   "pattern": "0",
+   "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
+  },
+  "LengthOfTheBody": {
+   "value": "1",
+   "default_value": "1",
+   "documentation": "Length of the body in meters",
+   "pattern": "2",
+   "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
+  },
+  "TemperatureIncrement": {
+   "value": "20",
+   "default_value": "100",
+   "documentation": "Temperature increment for each step",
+   "pattern": "1",
+   "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
+  },
+  "FinalTemperature": {
+   "value": "1800",
+   "default_value": "500",
+   "documentation": "Temperature at the end of cooling process",
+   "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
+  }
+ },
+ "OutputParameters": {
+  "OutputDirectory": {
+   "value": "/home/dealii/myWork/coolingModelRevision/resolvedGrainCooling/results/seed-sweep/periodic_08cpg_seed55",
+   "default_value": "output",
+   "documentation": "Directory to store output files",
+   "pattern": "25",
+   "pattern_description": "[DirectoryName]"
+  },
+  "OutputFileNamePrefix": {
+   "value": "periodic_08cpg_seed55",
+   "default_value": "solution",
+   "documentation": "Prefix for output file names",
+   "pattern": "26",
+   "pattern_description": "[Anything]"
+  },
+  "OutputFrequency": {
+   "value": "1",
+   "default_value": "10",
+   "documentation": "Frequency of output (in terms of number of steps)",
+   "pattern": "27",
+   "pattern_description": "[Integer range 1...2147483647 (inclusive)]"
+  },
+  "WriteFullStressTensor": {
+   "value": "false",
+   "default_value": "false",
+   "documentation": "Also write the complete stress tensor in BOTH frames (five remaining local components plus all six global). Off by default; on for post-hoc analysis.",
+   "pattern": "33",
+   "pattern_description": "[Bool]"
+  }
+ },
+ "SolverParameters": {
+  "DamageIncrementRelativeTolerance": {
+   "value": "1e-5",
+   "default_value": "1e-5",
+   "documentation": "Relative tolerance for damage increment in in displacement-damage iteration",
+   "pattern": "22",
+   "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
+  },
+  "DisplacementIncrementRelativeTolerance": {
+   "value": "1e-5",
+   "default_value": "1e-5",
+   "documentation": "Relative tolerance for displacement increment in in displacement-damage iteration",
+   "pattern": "21",
+   "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
+  },
+  "ForceEqulibriumRelativeTolerance": {
+   "value": "1e-4",
+   "default_value": "1e-4",
+   "documentation": "Relative tolerance for force equilibrium residiual in displacement-damage iteration",
+   "pattern": "20",
+   "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
+  },
+  "KineticAlgebraicSolverTolerance": {
+   "value": "1e-4",
+   "default_value": "1e-4",
+   "documentation": "Relative tolerance of iterative algebraic solver for kinetic equation",
+   "pattern": "24",
+   "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
+  },
+  "MaxNumberOfIterations": {
+   "value": "100",
+   "default_value": "100",
+   "documentation": "Maximum number of iterations for displacement-damage iteration",
+   "pattern": "23",
+   "pattern_description": "[Integer range 1...2147483647 (inclusive)]"
+  },
+  "LinearSolverTolerance": {
+   "value": "1e-8",
+   "default_value": "1e-6",
+   "documentation": "Relative tolerance (vs |rhs|) for the CG linear solve. Set tight here (not the 1e-6 production default) so the algebraic stress-damage consistency check in process_solution measures the COUPLING rather than the linear solver -- at 1e-6 it bottomed out at ~1.4e-3*StressThreshold; at 1e-12 it reaches ~2e-11*StressThreshold, i.e. round-off.",
+   "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
+  },
+  "MaxLinearSolverIterations": {
+   "value": "20000",
+   "default_value": "1000",
+   "documentation": "Iteration cap for the CG linear solve.",
+   "pattern_description": "[Integer range 1...2147483647 (inclusive)]"
+  },
+  "LinearSolverType": {
+   "value": "cg",
+   "default_value": "cg",
+   "documentation": "direct|cg",
+   "pattern": "35",
+   "pattern_description": "[Selection direct|cg ]"
+  },
+  "AmgSmootherSweeps": {
+   "value": "2",
+   "default_value": "2",
+   "documentation": "AMG smoother sweeps",
+   "pattern": "36",
+   "pattern_description": "[Integer range 1...2147483647 (inclusive)]"
+  },
+  "CouplingAcceleration": {
+   "value": "aitken",
+   "default_value": "none",
+   "documentation": "none|aitken",
+   "pattern": "38",
+   "pattern_description": "[Selection none|aitken ]"
+  },
+  "DamageWarningThreshold": {
+   "value": "0.9",
+   "default_value": "0.9",
+   "documentation": "Warn once when max damage exceeds this.",
+   "pattern": "40",
+   "pattern_description": "[Double 0...1 (inclusive)]"
+  }
+ },
+ "ParallelizationParameters": {
+  "UseWorkStream": {
+   "value": "true",
+   "default_value": "true",
+   "documentation": "Assemble and predict damage via WorkStream::run (multi-threaded). false selects the reference single-threaded loops, kept for A/B correctness and timing comparison.",
+   "pattern_description": "[Bool]"
+  },
+  "NumberOfThreads": {
+   "value": "12",
+   "default_value": "0",
+   "documentation": "Thread cap for WorkStream. 0 = all available cores.",
+   "pattern_description": "[Integer range 0...2147483647 (inclusive)]"
+  }
+ },
+ "BoundaryConditions": {
+  "Type": {
+   "value": "periodic",
+   "default_value": "zeroDisplacement",
+   "documentation": "zeroDisplacement | freeSurface | periodic. Start with zeroDisplacement to exercise the grain machinery, then freeSurface for a real <sigma>=0 free-cooling state. periodic is not implemented yet.",
+   "pattern": "31",
+   "pattern_description": "[Selection zeroDisplacement|freeSurface|periodic ]"
+  },
+  "OrientationSeed": {
+   "value": "55",
+   "default_value": "20260905",
+   "documentation": "Seed for per-grain random c-axis orientations. RECORD THIS with any result.",
+   "pattern": "32",
+   "pattern_description": "[Integer range 0...2147483647 (inclusive)]"
+  },
+  "UniformOrientation": {
+   "value": "false",
+   "default_value": "false",
+   "documentation": "Smoke test: all grains identically oriented.",
+   "pattern": "34",
+   "pattern_description": "[Bool]"
+  },
+  "GrainsPerSide": {
+   "value": "10",
+   "default_value": "10",
+   "documentation": "Grains along each cube edge; GrainsPerSide^3 grains total. Grain identity comes from the cell centroid, so refinement adds elements per grain without changing the grain count.",
+   "pattern": "37",
+   "pattern_description": "[Integer range 1...2147483647 (inclusive)]"
+  }
+ }
+}

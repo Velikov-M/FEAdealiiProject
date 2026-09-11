@@ -1,0 +1,734 @@
+Boundary conditions: periodic
+Threading: WorkStream, n_threads=12 (hardware concurrency 12)
+Boundary faces per pair: x=100, y=100, z=100
+Grains: 10^3 = 1000, 64000 cells => 64 elements per grain
+Orientations: seed=20260905, |mean c-axis|=0.0210999 (expect ~0), mean c_z^2=0.331402 (expect ~0.3333)
+Refinement cycle 0, temperature step 1, iteration 1 (T = 1980):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-1.06449e+07, max=3.72312e+07, tension fraction=0.999605, above threshold=0
+   damage: mean=0, max=0
+   <sigma> norm=7.28247e-07 (trace/3 = -3.21426e-07)
+   Ebar (diag) = -7.70326e-05, -8.46513e-05, -8.27675e-05   alphaBar (diag) = 3.85163e-06, 4.23257e-06, 4.13837e-06
+   Cbar diag (GPa) = 209.698 197.071 195.121 125.029 128.904 114.795   (rel. asymmetry 8.52886e-10)
+    convergence check: relSolInc=1 (tol 1e-05), maxDamageInc=0 (tol 1e-05), relResidual=4.86629e-08 (tol 0.0001)
+Refinement cycle 0, temperature step 1, iteration 2 (T = 1980):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-1.06449e+07, max=3.72312e+07, tension fraction=0.999605, above threshold=0
+   damage: mean=0, max=0
+   <sigma> norm=7.28247e-07 (trace/3 = -3.21426e-07)
+   Ebar (diag) = -7.70326e-05, -8.46513e-05, -8.27675e-05   alphaBar (diag) = 3.85163e-06, 4.23257e-06, 4.13837e-06
+   Cbar diag (GPa) = 209.698 197.071 195.121 125.029 128.904 114.795   (rel. asymmetry 8.52886e-10)
+    convergence check: relSolInc=0 (tol 1e-05), maxDamageInc=0 (tol 1e-05), relResidual=4.86629e-08 (tol 0.0001)
+Refinement cycle 0, temperature step 2, iteration 1 (T = 1960):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-2.12897e+07, max=7.44623e+07, tension fraction=0.999605, above threshold=0
+   damage: mean=0, max=0
+   <sigma> norm=1.45649e-06 (trace/3 = -6.42853e-07)
+   Ebar (diag) = -0.000154065, -0.000169303, -0.000165535   alphaBar (diag) = 3.85163e-06, 4.23257e-06, 4.13837e-06
+   Cbar diag (GPa) = 209.698 197.071 195.121 125.029 128.904 114.795   (rel. asymmetry 8.52886e-10)
+    convergence check: relSolInc=0.5 (tol 1e-05), maxDamageInc=0 (tol 1e-05), relResidual=4.86629e-08 (tol 0.0001)
+Refinement cycle 0, temperature step 2, iteration 2 (T = 1960):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-2.12897e+07, max=7.44623e+07, tension fraction=0.999605, above threshold=0
+   damage: mean=0, max=0
+   <sigma> norm=1.45649e-06 (trace/3 = -6.42853e-07)
+   Ebar (diag) = -0.000154065, -0.000169303, -0.000165535   alphaBar (diag) = 3.85163e-06, 4.23257e-06, 4.13837e-06
+   Cbar diag (GPa) = 209.698 197.071 195.121 125.029 128.904 114.795   (rel. asymmetry 8.52886e-10)
+    convergence check: relSolInc=0 (tol 1e-05), maxDamageInc=0 (tol 1e-05), relResidual=4.86629e-08 (tol 0.0001)
+Refinement cycle 0, temperature step 3, iteration 1 (T = 1940):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-3.19346e+07, max=1.11694e+08, tension fraction=0.999605, above threshold=0
+   damage: mean=0, max=0
+   <sigma> norm=3.13242e-06 (trace/3 = 2.37815e-07)
+   Ebar (diag) = -0.000231098, -0.000253954, -0.000248302   alphaBar (diag) = 3.85163e-06, 4.23257e-06, 4.13837e-06
+   Cbar diag (GPa) = 209.698 197.071 195.121 125.029 128.904 114.795   (rel. asymmetry 8.52886e-10)
+    convergence check: relSolInc=0.333333 (tol 1e-05), maxDamageInc=0 (tol 1e-05), relResidual=4.86629e-08 (tol 0.0001)
+Refinement cycle 0, temperature step 3, iteration 2 (T = 1940):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-3.19346e+07, max=1.11694e+08, tension fraction=0.999605, above threshold=0
+   damage: mean=0, max=0
+   <sigma> norm=3.13242e-06 (trace/3 = 2.37815e-07)
+   Ebar (diag) = -0.000231098, -0.000253954, -0.000248302   alphaBar (diag) = 3.85163e-06, 4.23257e-06, 4.13837e-06
+   Cbar diag (GPa) = 209.698 197.071 195.121 125.029 128.904 114.795   (rel. asymmetry 8.52886e-10)
+    convergence check: relSolInc=0 (tol 1e-05), maxDamageInc=0 (tol 1e-05), relResidual=4.86629e-08 (tol 0.0001)
+Refinement cycle 0, temperature step 4, iteration 1 (T = 1920):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-4.25795e+07, max=1.48925e+08, tension fraction=0.999605, above threshold=0
+   damage: mean=0, max=0
+   <sigma> norm=2.91299e-06 (trace/3 = -1.28571e-06)
+   Ebar (diag) = -0.00030813, -0.000338605, -0.00033107   alphaBar (diag) = 3.85163e-06, 4.23257e-06, 4.13837e-06
+   Cbar diag (GPa) = 209.698 197.071 195.121 125.029 128.904 114.795   (rel. asymmetry 8.52886e-10)
+    convergence check: relSolInc=0.25 (tol 1e-05), maxDamageInc=0 (tol 1e-05), relResidual=4.86629e-08 (tol 0.0001)
+Refinement cycle 0, temperature step 4, iteration 2 (T = 1920):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-4.25795e+07, max=1.48925e+08, tension fraction=0.999605, above threshold=0
+   damage: mean=0, max=0
+   <sigma> norm=2.91299e-06 (trace/3 = -1.28571e-06)
+   Ebar (diag) = -0.00030813, -0.000338605, -0.00033107   alphaBar (diag) = 3.85163e-06, 4.23257e-06, 4.13837e-06
+   Cbar diag (GPa) = 209.698 197.071 195.121 125.029 128.904 114.795   (rel. asymmetry 8.52886e-10)
+    convergence check: relSolInc=0 (tol 1e-05), maxDamageInc=0 (tol 1e-05), relResidual=4.86629e-08 (tol 0.0001)
+Refinement cycle 0, temperature step 5, iteration 1 (T = 1900):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-5.32243e+07, max=1.86156e+08, tension fraction=0.999605, above threshold=0
+   damage: mean=0, max=0
+   <sigma> norm=1.063e-05 (trace/3 = -9.13901e-07)
+   Ebar (diag) = -0.000385163, -0.000423257, -0.000413837   alphaBar (diag) = 3.85163e-06, 4.23257e-06, 4.13837e-06
+   Cbar diag (GPa) = 209.698 197.071 195.121 125.029 128.904 114.795   (rel. asymmetry 8.52886e-10)
+    convergence check: relSolInc=0.2 (tol 1e-05), maxDamageInc=0 (tol 1e-05), relResidual=4.86629e-08 (tol 0.0001)
+Refinement cycle 0, temperature step 5, iteration 2 (T = 1900):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-5.32243e+07, max=1.86156e+08, tension fraction=0.999605, above threshold=0
+   damage: mean=0, max=0
+   <sigma> norm=1.063e-05 (trace/3 = -9.13901e-07)
+   Ebar (diag) = -0.000385163, -0.000423257, -0.000413837   alphaBar (diag) = 3.85163e-06, 4.23257e-06, 4.13837e-06
+   Cbar diag (GPa) = 209.698 197.071 195.121 125.029 128.904 114.795   (rel. asymmetry 8.52886e-10)
+    convergence check: relSolInc=0 (tol 1e-05), maxDamageInc=0 (tol 1e-05), relResidual=4.86629e-08 (tol 0.0001)
+Refinement cycle 0, temperature step 6, iteration 1 (T = 1880):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-6.38692e+07, max=2.05741e+08, tension fraction=0.999605, above threshold=1.95313e-05
+   damage: mean=7.63383e-07, max=0.0774619
+   <sigma> norm=149.73 (trace/3 = -56.582)
+   Ebar (diag) = -0.000462195, -0.000507908, -0.000496605   alphaBar (diag) = 3.85163e-06, 4.23257e-06, 4.13837e-06
+   Cbar diag (GPa) = 209.698 197.071 195.121 125.029 128.904 114.795   (rel. asymmetry 8.52886e-10)
+    convergence check: relSolInc=0.166667 (tol 1e-05), maxDamageInc=0.0774619 (tol 1e-05), relResidual=0.00050623 (tol 0.0001)
+Refinement cycle 0, temperature step 6, iteration 2 (T = 1880):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-6.38693e+07, max=2.05775e+08, tension fraction=0.999605, above threshold=2.14844e-05
+   damage: mean=8.7287e-07, max=0.084305
+   <sigma> norm=22.3437 (trace/3 = -8.04816)
+   Ebar (diag) = -0.000462196, -0.000507907, -0.000496608   alphaBar (diag) = 3.85163e-06, 4.23256e-06, 4.1384e-06
+   Cbar diag (GPa) = 209.698 197.071 195.121 125.029 128.904 114.795   (rel. asymmetry 8.52946e-10)
+    convergence check: relSolInc=0.000114389 (tol 1e-05), maxDamageInc=0.00731295 (tol 1e-05), relResidual=7.75365e-05 (tol 0.0001)
+Refinement cycle 0, temperature step 6, iteration 3 (T = 1880):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-6.38693e+07, max=2.05943e+08, tension fraction=0.999605, above threshold=2.14844e-05
+   damage: mean=8.78892e-07, max=0.0845254
+   <sigma> norm=1.35267 (trace/3 = -0.43735)
+   Ebar (diag) = -0.000462196, -0.000507907, -0.000496609   alphaBar (diag) = 3.85163e-06, 4.23256e-06, 4.13841e-06
+   Cbar diag (GPa) = 209.698 197.071 195.121 125.029 128.904 114.795   (rel. asymmetry 8.52955e-10)
+    convergence check: relSolInc=1.7008e-05 (tol 1e-05), maxDamageInc=0.000540511 (tol 1e-05), relResidual=5.37319e-06 (tol 0.0001)
+Refinement cycle 0, temperature step 6, iteration 4 (T = 1880):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-6.38693e+07, max=2.05951e+08, tension fraction=0.999605, above threshold=2.14844e-05
+   damage: mean=8.79045e-07, max=0.0845397
+   <sigma> norm=0.0320189 (trace/3 = -0.0116)
+   Ebar (diag) = -0.000462196, -0.000507907, -0.000496609   alphaBar (diag) = 3.85163e-06, 4.23256e-06, 4.13841e-06
+   Cbar diag (GPa) = 209.698 197.071 195.121 125.029 128.904 114.795   (rel. asymmetry 8.52955e-10)
+    convergence check: relSolInc=1.13698e-06 (tol 1e-05), maxDamageInc=1.97126e-05 (tol 1e-05), relResidual=1.20779e-07 (tol 0.0001)
+Refinement cycle 0, temperature step 6, iteration 5 (T = 1880):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-6.38693e+07, max=2.05952e+08, tension fraction=0.999605, above threshold=2.14844e-05
+   damage: mean=8.79044e-07, max=0.0845389
+   <sigma> norm=0.000358784 (trace/3 = 0.000153253)
+   Ebar (diag) = -0.000462196, -0.000507907, -0.000496609   alphaBar (diag) = 3.85163e-06, 4.23256e-06, 4.13841e-06
+   Cbar diag (GPa) = 209.698 197.071 195.121 125.029 128.904 114.795   (rel. asymmetry 8.52954e-10)
+    convergence check: relSolInc=2.50319e-08 (tol 1e-05), maxDamageInc=4.09193e-06 (tol 1e-05), relResidual=4.8859e-08 (tol 0.0001)
+Refinement cycle 0, temperature step 7, iteration 1 (T = 1860):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-7.45142e+07, max=2.06706e+08, tension fraction=0.999605, above threshold=0.000205078
+   damage: mean=8.5673e-06, max=0.211368
+   <sigma> norm=1437.3 (trace/3 = -598.892)
+   Ebar (diag) = -0.000539229, -0.000592558, -0.000579377   alphaBar (diag) = 3.85163e-06, 4.23256e-06, 4.13841e-06
+   Cbar diag (GPa) = 209.698 197.071 195.121 125.029 128.904 114.795   (rel. asymmetry 8.52955e-10)
+    convergence check: relSolInc=0.142857 (tol 1e-05), maxDamageInc=0.127228 (tol 1e-05), relResidual=0.00249783 (tol 0.0001)
+Refinement cycle 0, temperature step 7, iteration 2 (T = 1860):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-7.45216e+07, max=2.06226e+08, tension fraction=0.999605, above threshold=0.000210938
+   damage: mean=1.01555e-05, max=0.237989
+   <sigma> norm=323.187 (trace/3 = -126.284)
+   Ebar (diag) = -0.000539231, -0.000592546, -0.00057941   alphaBar (diag) = 3.85165e-06, 4.23247e-06, 4.13864e-06
+   Cbar diag (GPa) = 209.697 197.071 195.118 125.028 128.904 114.795   (rel. asymmetry 8.53251e-10)
+    convergence check: relSolInc=0.000567756 (tol 1e-05), maxDamageInc=0.0326567 (tol 1e-05), relResidual=0.000678183 (tol 0.0001)
+Refinement cycle 0, temperature step 7, iteration 3 (T = 1860):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-7.45218e+07, max=2.07132e+08, tension fraction=0.999605, above threshold=0.000212891
+   damage: mean=1.02364e-05, max=0.240759
+   <sigma> norm=22.0099 (trace/3 = -6.85359)
+   Ebar (diag) = -0.000539231, -0.000592543, -0.000579417   alphaBar (diag) = 3.85165e-06, 4.23245e-06, 4.13869e-06
+   Cbar diag (GPa) = 209.697 197.071 195.117 125.028 128.904 114.795   (rel. asymmetry 8.53301e-10)
+    convergence check: relSolInc=0.000145921 (tol 1e-05), maxDamageInc=0.00425088 (tol 1e-05), relResidual=7.42143e-05 (tol 0.0001)
+Refinement cycle 0, temperature step 7, iteration 4 (T = 1860):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-7.45217e+07, max=2.07349e+08, tension fraction=0.999605, above threshold=0.000212891
+   damage: mean=1.02425e-05, max=0.240904
+   <sigma> norm=1.15314 (trace/3 = -0.50078)
+   Ebar (diag) = -0.000539231, -0.000592543, -0.000579417   alphaBar (diag) = 3.85165e-06, 4.23245e-06, 4.1387e-06
+   Cbar diag (GPa) = 209.697 197.071 195.117 125.028 128.904 114.795   (rel. asymmetry 8.533e-10)
+    convergence check: relSolInc=1.54198e-05 (tol 1e-05), maxDamageInc=0.000157258 (tol 1e-05), relResidual=2.50689e-06 (tol 0.0001)
+Refinement cycle 0, temperature step 7, iteration 5 (T = 1860):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-7.45217e+07, max=2.07359e+08, tension fraction=0.999605, above threshold=0.000212891
+   damage: mean=1.02421e-05, max=0.240895
+   <sigma> norm=0.0645216 (trace/3 = 0.0347763)
+   Ebar (diag) = -0.000539231, -0.000592543, -0.000579417   alphaBar (diag) = 3.85165e-06, 4.23245e-06, 4.1387e-06
+   Cbar diag (GPa) = 209.697 197.071 195.117 125.028 128.904 114.795   (rel. asymmetry 8.53301e-10)
+    convergence check: relSolInc=5.8954e-07 (tol 1e-05), maxDamageInc=3.509e-05 (tol 1e-05), relResidual=2.26025e-07 (tol 0.0001)
+Refinement cycle 0, temperature step 7, iteration 6 (T = 1860):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-7.45217e+07, max=2.07359e+08, tension fraction=0.999605, above threshold=0.000212891
+   damage: mean=1.02421e-05, max=0.240896
+   <sigma> norm=0.00429266 (trace/3 = -0.00198089)
+   Ebar (diag) = -0.000539231, -0.000592543, -0.000579417   alphaBar (diag) = 3.85165e-06, 4.23245e-06, 4.1387e-06
+   Cbar diag (GPa) = 209.697 197.071 195.117 125.028 128.904 114.795   (rel. asymmetry 8.53301e-10)
+    convergence check: relSolInc=4.51973e-08 (tol 1e-05), maxDamageInc=3.71422e-06 (tol 1e-05), relResidual=5.16233e-08 (tol 0.0001)
+Refinement cycle 0, temperature step 8, iteration 1 (T = 1840):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-8.51676e+07, max=2.06412e+08, tension fraction=0.999605, above threshold=0.0022207
+   damage: mean=8.94932e-05, max=0.340037
+   <sigma> norm=10825.3 (trace/3 = -6051.94)
+   Ebar (diag) = -0.000616264, -0.000677192, -0.000662191   alphaBar (diag) = 3.85165e-06, 4.23245e-06, 4.1387e-06
+   Cbar diag (GPa) = 209.697 197.071 195.117 125.028 128.904 114.795   (rel. asymmetry 8.53301e-10)
+    convergence check: relSolInc=0.125 (tol 1e-05), maxDamageInc=0.114337 (tol 1e-05), relResidual=0.00609188 (tol 0.0001)
+Refinement cycle 0, temperature step 8, iteration 2 (T = 1840):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-8.53669e+07, max=2.06316e+08, tension fraction=0.999604, above threshold=0.0022832
+   damage: mean=0.000102548, max=0.367342
+   <sigma> norm=1895.89 (trace/3 = -1018.87)
+   Ebar (diag) = -0.000616309, -0.000677159, -0.000662308   alphaBar (diag) = 3.85193e-06, 4.23224e-06, 4.13942e-06
+   Cbar diag (GPa) = 209.691 197.067 195.106 125.024 128.9 114.793   (rel. asymmetry 8.54485e-10)
+    convergence check: relSolInc=0.00143016 (tol 1e-05), maxDamageInc=0.031723 (tol 1e-05), relResidual=0.00145705 (tol 0.0001)
+Refinement cycle 0, temperature step 8, iteration 3 (T = 1840):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-8.54003e+07, max=2.06888e+08, tension fraction=0.999602, above threshold=0.00230078
+   damage: mean=0.000103397, max=0.371491
+   <sigma> norm=151.171 (trace/3 = -70.31)
+   Ebar (diag) = -0.000616318, -0.000677148, -0.000662331   alphaBar (diag) = 3.85199e-06, 4.23218e-06, 4.13957e-06
+   Cbar diag (GPa) = 209.689 197.066 195.104 125.023 128.9 114.792   (rel. asymmetry 8.54774e-10)
+    convergence check: relSolInc=0.000329164 (tol 1e-05), maxDamageInc=0.00768738 (tol 1e-05), relResidual=0.000238232 (tol 0.0001)
+Refinement cycle 0, temperature step 8, iteration 4 (T = 1840):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-8.54018e+07, max=2.07086e+08, tension fraction=0.999602, above threshold=0.00230078
+   damage: mean=0.000103481, max=0.371884
+   <sigma> norm=13.6236 (trace/3 = -7.0104)
+   Ebar (diag) = -0.000616319, -0.000677147, -0.000662333   alphaBar (diag) = 3.85199e-06, 4.23217e-06, 4.13958e-06
+   Cbar diag (GPa) = 209.689 197.066 195.104 125.023 128.9 114.792   (rel. asymmetry 8.5481e-10)
+    convergence check: relSolInc=5.02619e-05 (tol 1e-05), maxDamageInc=0.00120619 (tol 1e-05), relResidual=2.99846e-05 (tol 0.0001)
+Refinement cycle 0, temperature step 8, iteration 5 (T = 1840):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-8.54019e+07, max=2.07093e+08, tension fraction=0.999602, above threshold=0.00230078
+   damage: mean=0.000103474, max=0.371893
+   <sigma> norm=0.90846 (trace/3 = 0.446341)
+   Ebar (diag) = -0.000616319, -0.000677147, -0.000662333   alphaBar (diag) = 3.85199e-06, 4.23217e-06, 4.13958e-06
+   Cbar diag (GPa) = 209.689 197.066 195.104 125.023 128.9 114.792   (rel. asymmetry 8.54813e-10)
+    convergence check: relSolInc=6.48962e-06 (tol 1e-05), maxDamageInc=0.000283608 (tol 1e-05), relResidual=2.90509e-06 (tol 0.0001)
+Refinement cycle 0, temperature step 8, iteration 6 (T = 1840):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-8.54019e+07, max=2.07092e+08, tension fraction=0.999602, above threshold=0.00230078
+   damage: mean=0.000103477, max=0.371896
+   <sigma> norm=0.342572 (trace/3 = -0.196876)
+   Ebar (diag) = -0.000616319, -0.000677147, -0.000662333   alphaBar (diag) = 3.85199e-06, 4.23217e-06, 4.13958e-06
+   Cbar diag (GPa) = 209.689 197.066 195.104 125.023 128.9 114.792   (rel. asymmetry 8.54814e-10)
+    convergence check: relSolInc=6.89297e-07 (tol 1e-05), maxDamageInc=5.92389e-05 (tol 1e-05), relResidual=3.2255e-07 (tol 0.0001)
+Refinement cycle 0, temperature step 8, iteration 7 (T = 1840):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-8.54019e+07, max=2.07093e+08, tension fraction=0.999602, above threshold=0.00230078
+   damage: mean=0.000103477, max=0.371896
+   <sigma> norm=0.0308385 (trace/3 = 0.0170758)
+   Ebar (diag) = -0.000616319, -0.000677147, -0.000662333   alphaBar (diag) = 3.85199e-06, 4.23217e-06, 4.13958e-06
+   Cbar diag (GPa) = 209.689 197.066 195.104 125.023 128.9 114.792   (rel. asymmetry 8.54813e-10)
+    convergence check: relSolInc=7.96349e-08 (tol 1e-05), maxDamageInc=1.17489e-05 (tol 1e-05), relResidual=6.88672e-08 (tol 0.0001)
+Refinement cycle 0, temperature step 8, iteration 8 (T = 1840):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-8.54019e+07, max=2.07093e+08, tension fraction=0.999602, above threshold=0.00230078
+   damage: mean=0.000103477, max=0.371896
+   <sigma> norm=0.00130231 (trace/3 = 0.000191227)
+   Ebar (diag) = -0.000616319, -0.000677147, -0.000662333   alphaBar (diag) = 3.85199e-06, 4.23217e-06, 4.13958e-06
+   Cbar diag (GPa) = 209.689 197.066 195.104 125.023 128.9 114.792   (rel. asymmetry 8.54814e-10)
+    convergence check: relSolInc=1.17383e-08 (tol 1e-05), maxDamageInc=8.26443e-07 (tol 1e-05), relResidual=5.02098e-08 (tol 0.0001)
+Refinement cycle 0, temperature step 9, iteration 1 (T = 1820):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-9.60771e+07, max=2.06188e+08, tension fraction=0.999602, above threshold=0.0189824
+   damage: mean=0.000710618, max=0.444478
+   <sigma> norm=80067.7 (trace/3 = -46051.3)
+   Ebar (diag) = -0.000693359, -0.00076179, -0.000745125   alphaBar (diag) = 3.85199e-06, 4.23217e-06, 4.13958e-06
+   Cbar diag (GPa) = 209.689 197.066 195.104 125.023 128.9 114.792   (rel. asymmetry 8.54813e-10)
+    convergence check: relSolInc=0.111111 (tol 1e-05), maxDamageInc=0.104336 (tol 1e-05), relResidual=0.0135856 (tol 0.0001)
+Refinement cycle 0, temperature step 9, iteration 2 (T = 1820):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-9.68903e+07, max=2.06171e+08, tension fraction=0.9996, above threshold=0.0193652
+   damage: mean=0.000797247, max=0.464269
+   <sigma> norm=11728.6 (trace/3 = -6725)
+   Ebar (diag) = -0.000693541, -0.000761841, -0.0007453   alphaBar (diag) = 3.85301e-06, 4.23245e-06, 4.14055e-06
+   Cbar diag (GPa) = 209.663 197.047 195.08 125.007 128.881 114.779   (rel. asymmetry 8.61166e-10)
+    convergence check: relSolInc=0.00325044 (tol 1e-05), maxDamageInc=0.0463363 (tol 1e-05), relResidual=0.00302623 (tol 0.0001)
+Refinement cycle 0, temperature step 9, iteration 3 (T = 1820):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-9.70148e+07, max=2.06571e+08, tension fraction=0.999596, above threshold=0.0194121
+   damage: mean=0.000804301, max=0.467092
+   <sigma> norm=1036.11 (trace/3 = -578.482)
+   Ebar (diag) = -0.000693582, -0.000761837, -0.000745328   alphaBar (diag) = 3.85323e-06, 4.23243e-06, 4.14071e-06
+   Cbar diag (GPa) = 209.658 197.044 195.075 125.005 128.878 114.777   (rel. asymmetry 8.62192e-10)
+    convergence check: relSolInc=0.000820971 (tol 1e-05), maxDamageInc=0.0193287 (tol 1e-05), relResidual=0.000716489 (tol 0.0001)
+Refinement cycle 0, temperature step 9, iteration 4 (T = 1820):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-9.7025e+07, max=2.06997e+08, tension fraction=0.999596, above threshold=0.0194043
+   damage: mean=0.000805389, max=0.467231
+   <sigma> norm=163.187 (trace/3 = -90.2415)
+   Ebar (diag) = -0.000693589, -0.000761834, -0.000745331   alphaBar (diag) = 3.85327e-06, 4.23241e-06, 4.14073e-06
+   Cbar diag (GPa) = 209.657 197.043 195.075 125.004 128.878 114.776   (rel. asymmetry 8.6223e-10)
+    convergence check: relSolInc=0.000220594 (tol 1e-05), maxDamageInc=0.00954763 (tol 1e-05), relResidual=0.000228537 (tol 0.0001)
+Refinement cycle 0, temperature step 9, iteration 5 (T = 1820):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-9.70263e+07, max=2.07349e+08, tension fraction=0.999596, above threshold=0.0194141
+   damage: mean=0.000805377, max=0.467202
+   <sigma> norm=9.80151 (trace/3 = -0.0763805)
+   Ebar (diag) = -0.00069359, -0.000761834, -0.000745331   alphaBar (diag) = 3.85328e-06, 4.23241e-06, 4.14073e-06
+   Cbar diag (GPa) = 209.657 197.043 195.075 125.004 128.878 114.776   (rel. asymmetry 8.62229e-10)
+    convergence check: relSolInc=7.94437e-05 (tol 1e-05), maxDamageInc=0.00726194 (tol 1e-05), relResidual=0.000111362 (tol 0.0001)
+Refinement cycle 0, temperature step 9, iteration 6 (T = 1820):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-9.70263e+07, max=2.07396e+08, tension fraction=0.999596, above threshold=0.0194121
+   damage: mean=0.00080553, max=0.467187
+   <sigma> norm=21.7691 (trace/3 = -12.3481)
+   Ebar (diag) = -0.00069359, -0.000761834, -0.000745331   alphaBar (diag) = 3.85328e-06, 4.23241e-06, 4.14073e-06
+   Cbar diag (GPa) = 209.657 197.043 195.075 125.004 128.878 114.776   (rel. asymmetry 8.62233e-10)
+    convergence check: relSolInc=4.21776e-05 (tol 1e-05), maxDamageInc=0.0048381 (tol 1e-05), relResidual=7.40046e-05 (tol 0.0001)
+Refinement cycle 0, temperature step 9, iteration 7 (T = 1820):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-9.70265e+07, max=2.07369e+08, tension fraction=0.999596, above threshold=0.0194102
+   damage: mean=0.000805291, max=0.467196
+   <sigma> norm=32.7523 (trace/3 = 18.379)
+   Ebar (diag) = -0.00069359, -0.000761834, -0.000745331   alphaBar (diag) = 3.85328e-06, 4.23241e-06, 4.14073e-06
+   Cbar diag (GPa) = 209.657 197.043 195.075 125.004 128.878 114.776   (rel. asymmetry 8.62237e-10)
+    convergence check: relSolInc=2.88573e-05 (tol 1e-05), maxDamageInc=0.00147372 (tol 1e-05), relResidual=2.50169e-05 (tol 0.0001)
+Refinement cycle 0, temperature step 9, iteration 8 (T = 1820):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-9.70262e+07, max=2.07382e+08, tension fraction=0.999596, above threshold=0.0194121
+   damage: mean=0.000805454, max=0.467192
+   <sigma> norm=22.4225 (trace/3 = -12.6505)
+   Ebar (diag) = -0.00069359, -0.000761834, -0.000745331   alphaBar (diag) = 3.85328e-06, 4.23241e-06, 4.14073e-06
+   Cbar diag (GPa) = 209.657 197.043 195.075 125.004 128.878 114.776   (rel. asymmetry 8.62235e-10)
+    convergence check: relSolInc=9.923e-06 (tol 1e-05), maxDamageInc=0.000789165 (tol 1e-05), relResidual=7.77641e-06 (tol 0.0001)
+Refinement cycle 0, temperature step 9, iteration 9 (T = 1820):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-9.70264e+07, max=2.07381e+08, tension fraction=0.999596, above threshold=0.0194121
+   damage: mean=0.000805439, max=0.467191
+   <sigma> norm=2.00412 (trace/3 = 1.145)
+   Ebar (diag) = -0.00069359, -0.000761834, -0.000745331   alphaBar (diag) = 3.85328e-06, 4.23241e-06, 4.14073e-06
+   Cbar diag (GPa) = 209.657 197.043 195.075 125.004 128.878 114.776   (rel. asymmetry 8.62237e-10)
+    convergence check: relSolInc=2.3914e-06 (tol 1e-05), maxDamageInc=0.000193424 (tol 1e-05), relResidual=3.33765e-06 (tol 0.0001)
+Refinement cycle 0, temperature step 9, iteration 10 (T = 1820):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-9.70264e+07, max=2.07381e+08, tension fraction=0.999596, above threshold=0.0194121
+   damage: mean=0.000805439, max=0.467191
+   <sigma> norm=0.0562779 (trace/3 = 0.0158071)
+   Ebar (diag) = -0.00069359, -0.000761834, -0.000745331   alphaBar (diag) = 3.85328e-06, 4.23241e-06, 4.14073e-06
+   Cbar diag (GPa) = 209.657 197.043 195.075 125.004 128.878 114.776   (rel. asymmetry 8.62237e-10)
+    convergence check: relSolInc=1.38026e-06 (tol 1e-05), maxDamageInc=0.00019522 (tol 1e-05), relResidual=3.45559e-06 (tol 0.0001)
+Refinement cycle 0, temperature step 9, iteration 11 (T = 1820):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-9.70264e+07, max=2.07381e+08, tension fraction=0.999596, above threshold=0.0194121
+   damage: mean=0.000805439, max=0.467191
+   <sigma> norm=0.209967 (trace/3 = -0.0925867)
+   Ebar (diag) = -0.00069359, -0.000761834, -0.000745331   alphaBar (diag) = 3.85328e-06, 4.23241e-06, 4.14073e-06
+   Cbar diag (GPa) = 209.657 197.043 195.075 125.004 128.878 114.776   (rel. asymmetry 8.62236e-10)
+    convergence check: relSolInc=1.43361e-06 (tol 1e-05), maxDamageInc=0.000541272 (tol 1e-05), relResidual=1.00992e-05 (tol 0.0001)
+Refinement cycle 0, temperature step 9, iteration 12 (T = 1820):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-9.70264e+07, max=2.07381e+08, tension fraction=0.999596, above threshold=0.0194121
+   damage: mean=0.000805437, max=0.46719
+   <sigma> norm=0.219905 (trace/3 = 0.123092)
+   Ebar (diag) = -0.00069359, -0.000761834, -0.000745331   alphaBar (diag) = 3.85328e-06, 4.23241e-06, 4.14073e-06
+   Cbar diag (GPa) = 209.657 197.043 195.075 125.004 128.878 114.776   (rel. asymmetry 8.62238e-10)
+    convergence check: relSolInc=4.15269e-06 (tol 1e-05), maxDamageInc=0.000144207 (tol 1e-05), relResidual=2.12394e-06 (tol 0.0001)
+Refinement cycle 0, temperature step 9, iteration 13 (T = 1820):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-9.70264e+07, max=2.07381e+08, tension fraction=0.999596, above threshold=0.0194121
+   damage: mean=0.000805442, max=0.467191
+   <sigma> norm=0.529526 (trace/3 = -0.303546)
+   Ebar (diag) = -0.00069359, -0.000761834, -0.000745331   alphaBar (diag) = 3.85328e-06, 4.23241e-06, 4.14073e-06
+   Cbar diag (GPa) = 209.657 197.043 195.075 125.004 128.878 114.776   (rel. asymmetry 8.62241e-10)
+    convergence check: relSolInc=7.66967e-07 (tol 1e-05), maxDamageInc=4.93286e-05 (tol 1e-05), relResidual=4.04431e-07 (tol 0.0001)
+Refinement cycle 0, temperature step 9, iteration 14 (T = 1820):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-9.70264e+07, max=2.07381e+08, tension fraction=0.999596, above threshold=0.0194121
+   damage: mean=0.000805439, max=0.467191
+   <sigma> norm=0.325549 (trace/3 = 0.186189)
+   Ebar (diag) = -0.00069359, -0.000761834, -0.000745331   alphaBar (diag) = 3.85328e-06, 4.23241e-06, 4.14073e-06
+   Cbar diag (GPa) = 209.657 197.043 195.075 125.004 128.878 114.776   (rel. asymmetry 8.62237e-10)
+    convergence check: relSolInc=1.42775e-07 (tol 1e-05), maxDamageInc=3.39571e-05 (tol 1e-05), relResidual=1.26831e-07 (tol 0.0001)
+Refinement cycle 0, temperature step 9, iteration 15 (T = 1820):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-9.70264e+07, max=2.07381e+08, tension fraction=0.999596, above threshold=0.0194121
+   damage: mean=0.000805439, max=0.467191
+   <sigma> norm=0.0128823 (trace/3 = 0.00707201)
+   Ebar (diag) = -0.00069359, -0.000761834, -0.000745331   alphaBar (diag) = 3.85328e-06, 4.23241e-06, 4.14073e-06
+   Cbar diag (GPa) = 209.657 197.043 195.075 125.004 128.878 114.776   (rel. asymmetry 8.62238e-10)
+    convergence check: relSolInc=2.92789e-08 (tol 1e-05), maxDamageInc=3.98883e-06 (tol 1e-05), relResidual=7.58175e-08 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 1 (T = 1800):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-1.07807e+08, max=2.06005e+08, tension fraction=0.999596, above threshold=0.111609
+   damage: mean=0.00470827, max=0.521665
+   <sigma> norm=512359 (trace/3 = -295003)
+   Ebar (diag) = -0.000770655, -0.000846482, -0.000828146   alphaBar (diag) = 3.85328e-06, 4.23241e-06, 4.14073e-06
+   Cbar diag (GPa) = 209.657 197.043 195.075 125.004 128.878 114.776   (rel. asymmetry 8.62238e-10)
+    convergence check: relSolInc=0.1 (tol 1e-05), maxDamageInc=0.0961725 (tol 1e-05), relResidual=0.0274647 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 2 (T = 1800):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-1.09082e+08, max=2.06036e+08, tension fraction=0.999592, above threshold=0.111891
+   damage: mean=0.00513831, max=0.53381
+   <sigma> norm=58417.6 (trace/3 = -33552.7)
+   Ebar (diag) = -0.000770701, -0.000846296, -0.000828114   alphaBar (diag) = 3.85351e-06, 4.23148e-06, 4.14057e-06
+   Cbar diag (GPa) = 209.588 196.986 195.015 124.942 128.806 114.718   (rel. asymmetry 8.99442e-10)
+    convergence check: relSolInc=0.00703215 (tol 1e-05), maxDamageInc=0.0574619 (tol 1e-05), relResidual=0.0059454 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 3 (T = 1800):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-1.0928e+08, max=2.06373e+08, tension fraction=0.999588, above threshold=0.111586
+   damage: mean=0.00518814, max=0.53444
+   <sigma> norm=7293.47 (trace/3 = -4139.05)
+   Ebar (diag) = -0.000770742, -0.000846259, -0.000828126   alphaBar (diag) = 3.85371e-06, 4.23129e-06, 4.14063e-06
+   Cbar diag (GPa) = 209.576 196.977 195.007 124.933 128.796 114.709   (rel. asymmetry 9.03071e-10)
+    convergence check: relSolInc=0.00198662 (tol 1e-05), maxDamageInc=0.0326626 (tol 1e-05), relResidual=0.00209161 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 4 (T = 1800):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-1.09314e+08, max=2.07096e+08, tension fraction=0.999588, above threshold=0.111379
+   damage: mean=0.00519598, max=0.533723
+   <sigma> norm=1282.4 (trace/3 = -709.456)
+   Ebar (diag) = -0.000770758, -0.000846248, -0.00082813   alphaBar (diag) = 3.85379e-06, 4.23124e-06, 4.14065e-06
+   Cbar diag (GPa) = 209.574 196.975 195.005 124.932 128.794 114.708   (rel. asymmetry 9.03153e-10)
+    convergence check: relSolInc=0.000841718 (tol 1e-05), maxDamageInc=0.0195404 (tol 1e-05), relResidual=0.00108797 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 5 (T = 1800):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-1.09323e+08, max=2.07501e+08, tension fraction=0.999588, above threshold=0.111309
+   damage: mean=0.00519568, max=0.533543
+   <sigma> norm=94.2962 (trace/3 = -33.9977)
+   Ebar (diag) = -0.00077076, -0.000846246, -0.000828132   alphaBar (diag) = 3.8538e-06, 4.23123e-06, 4.14066e-06
+   Cbar diag (GPa) = 209.574 196.975 195.005 124.931 128.794 114.708   (rel. asymmetry 9.03175e-10)
+    convergence check: relSolInc=0.00049499 (tol 1e-05), maxDamageInc=0.0194317 (tol 1e-05), relResidual=0.000784754 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 6 (T = 1800):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-1.09328e+08, max=2.0782e+08, tension fraction=0.999588, above threshold=0.111275
+   damage: mean=0.00519678, max=0.533492
+   <sigma> norm=207.471 (trace/3 = -115.206)
+   Ebar (diag) = -0.00077076, -0.000846246, -0.000828133   alphaBar (diag) = 3.8538e-06, 4.23123e-06, 4.14067e-06
+   Cbar diag (GPa) = 209.574 196.975 195.005 124.931 128.794 114.708   (rel. asymmetry 9.03453e-10)
+    convergence check: relSolInc=0.000374637 (tol 1e-05), maxDamageInc=0.0170812 (tol 1e-05), relResidual=0.000633482 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 7 (T = 1800):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-1.0933e+08, max=2.07582e+08, tension fraction=0.999588, above threshold=0.111273
+   damage: mean=0.00519208, max=0.533472
+   <sigma> norm=588.485 (trace/3 = 334.435)
+   Ebar (diag) = -0.00077076, -0.000846246, -0.000828133   alphaBar (diag) = 3.8538e-06, 4.23123e-06, 4.14067e-06
+   Cbar diag (GPa) = 209.574 196.975 195.005 124.931 128.794 114.708   (rel. asymmetry 9.03651e-10)
+    convergence check: relSolInc=0.000295078 (tol 1e-05), maxDamageInc=0.00895668 (tol 1e-05), relResidual=0.000307649 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 8 (T = 1800):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-1.09328e+08, max=2.07809e+08, tension fraction=0.999588, above threshold=0.111277
+   damage: mean=0.005196, max=0.533483
+   <sigma> norm=512.474 (trace/3 = -292.687)
+   Ebar (diag) = -0.00077076, -0.000846247, -0.000828134   alphaBar (diag) = 3.8538e-06, 4.23123e-06, 4.14067e-06
+   Cbar diag (GPa) = 209.574 196.975 195.005 124.931 128.794 114.708   (rel. asymmetry 9.03748e-10)
+    convergence check: relSolInc=0.00013301 (tol 1e-05), maxDamageInc=0.00800866 (tol 1e-05), relResidual=9.62666e-05 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 9 (T = 1800):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-1.09329e+08, max=2.07891e+08, tension fraction=0.999588, above threshold=0.111281
+   damage: mean=0.00519514, max=0.533468
+   <sigma> norm=109.251 (trace/3 = 62.8796)
+   Ebar (diag) = -0.00077076, -0.000846246, -0.000828133   alphaBar (diag) = 3.8538e-06, 4.23123e-06, 4.14067e-06
+   Cbar diag (GPa) = 209.574 196.975 195.005 124.931 128.794 114.708   (rel. asymmetry 9.03748e-10)
+    convergence check: relSolInc=3.24134e-05 (tol 1e-05), maxDamageInc=0.00155997 (tol 1e-05), relResidual=4.68214e-05 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 10 (T = 1800):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-1.09329e+08, max=2.07868e+08, tension fraction=0.999588, above threshold=0.111281
+   damage: mean=0.00519513, max=0.533465
+   <sigma> norm=2.35104 (trace/3 = -1.06547)
+   Ebar (diag) = -0.00077076, -0.000846246, -0.000828134   alphaBar (diag) = 3.8538e-06, 4.23123e-06, 4.14067e-06
+   Cbar diag (GPa) = 209.574 196.975 195.005 124.931 128.794 114.708   (rel. asymmetry 9.03763e-10)
+    convergence check: relSolInc=2.0572e-05 (tol 1e-05), maxDamageInc=0.00124696 (tol 1e-05), relResidual=4.64435e-05 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 11 (T = 1800):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-1.09329e+08, max=2.07725e+08, tension fraction=0.999588, above threshold=0.111281
+   damage: mean=0.005195, max=0.533453
+   <sigma> norm=8.30479 (trace/3 = 3.91015)
+   Ebar (diag) = -0.00077076, -0.000846246, -0.000828134   alphaBar (diag) = 3.8538e-06, 4.23123e-06, 4.14067e-06
+   Cbar diag (GPa) = 209.574 196.975 195.005 124.931 128.794 114.708   (rel. asymmetry 9.03776e-10)
+    convergence check: relSolInc=2.06494e-05 (tol 1e-05), maxDamageInc=0.00473747 (tol 1e-05), relResidual=0.00017589 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 12 (T = 1800):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-1.09329e+08, max=2.07718e+08, tension fraction=0.999588, above threshold=0.111283
+   damage: mean=0.00519494, max=0.533444
+   <sigma> norm=3.62524 (trace/3 = 1.55017)
+   Ebar (diag) = -0.00077076, -0.000846246, -0.000828134   alphaBar (diag) = 3.8538e-06, 4.23123e-06, 4.14067e-06
+   Cbar diag (GPa) = 209.574 196.975 195.005 124.931 128.794 114.708   (rel. asymmetry 9.03825e-10)
+    convergence check: relSolInc=7.79137e-05 (tol 1e-05), maxDamageInc=0.00317536 (tol 1e-05), relResidual=9.86248e-05 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 13 (T = 1800):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-1.09329e+08, max=2.07756e+08, tension fraction=0.999588, above threshold=0.111283
+   damage: mean=0.0051949, max=0.53345
+   <sigma> norm=5.38888 (trace/3 = 2.45142)
+   Ebar (diag) = -0.00077076, -0.000846246, -0.000828134   alphaBar (diag) = 3.8538e-06, 4.23123e-06, 4.14067e-06
+   Cbar diag (GPa) = 209.574 196.975 195.005 124.931 128.794 114.708   (rel. asymmetry 9.03845e-10)
+    convergence check: relSolInc=4.16182e-05 (tol 1e-05), maxDamageInc=0.00239641 (tol 1e-05), relResidual=6.10175e-05 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 14 (T = 1800):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-1.09329e+08, max=2.08002e+08, tension fraction=0.999588, above threshold=0.111283
+   damage: mean=0.00519494, max=0.533439
+   <sigma> norm=7.2807 (trace/3 = -4.06462)
+   Ebar (diag) = -0.00077076, -0.000846246, -0.000828134   alphaBar (diag) = 3.8538e-06, 4.23123e-06, 4.14067e-06
+   Cbar diag (GPa) = 209.574 196.975 195.005 124.931 128.794 114.708   (rel. asymmetry 9.03852e-10)
+    convergence check: relSolInc=2.41407e-05 (tol 1e-05), maxDamageInc=0.00112672 (tol 1e-05), relResidual=1.36007e-05 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 15 (T = 1800):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-1.09329e+08, max=2.08006e+08, tension fraction=0.999588, above threshold=0.111283
+   damage: mean=0.0051949, max=0.533441
+   <sigma> norm=5.13414 (trace/3 = 2.95638)
+   Ebar (diag) = -0.00077076, -0.000846246, -0.000828134   alphaBar (diag) = 3.8538e-06, 4.23123e-06, 4.14067e-06
+   Cbar diag (GPa) = 209.574 196.975 195.005 124.931 128.794 114.708   (rel. asymmetry 9.03854e-10)
+    convergence check: relSolInc=5.2425e-06 (tol 1e-05), maxDamageInc=0.000429305 (tol 1e-05), relResidual=7.19401e-06 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 16 (T = 1800):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-1.09329e+08, max=2.08008e+08, tension fraction=0.999588, above threshold=0.111283
+   damage: mean=0.0051949, max=0.533441
+   <sigma> norm=0.241824 (trace/3 = -0.137879)
+   Ebar (diag) = -0.00077076, -0.000846246, -0.000828134   alphaBar (diag) = 3.8538e-06, 4.23123e-06, 4.14067e-06
+   Cbar diag (GPa) = 209.574 196.975 195.005 124.931 128.794 114.708   (rel. asymmetry 9.03854e-10)
+    convergence check: relSolInc=2.71151e-06 (tol 1e-05), maxDamageInc=0.000268472 (tol 1e-05), relResidual=6.64815e-06 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 17 (T = 1800):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-1.09329e+08, max=2.07884e+08, tension fraction=0.999588, above threshold=0.111283
+   damage: mean=0.0051949, max=0.533439
+   <sigma> norm=0.378789 (trace/3 = 0.0218527)
+   Ebar (diag) = -0.00077076, -0.000846246, -0.000828134   alphaBar (diag) = 3.8538e-06, 4.23123e-06, 4.14067e-06
+   Cbar diag (GPa) = 209.574 196.975 195.005 124.931 128.794 114.708   (rel. asymmetry 9.03855e-10)
+    convergence check: relSolInc=2.51802e-06 (tol 1e-05), maxDamageInc=0.00122746 (tol 1e-05), relResidual=2.9926e-05 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 18 (T = 1800):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-1.09329e+08, max=2.07945e+08, tension fraction=0.999588, above threshold=0.111283
+   damage: mean=0.00519488, max=0.533438
+   <sigma> norm=1.34207 (trace/3 = 0.680553)
+   Ebar (diag) = -0.00077076, -0.000846246, -0.000828134   alphaBar (diag) = 3.8538e-06, 4.23123e-06, 4.14067e-06
+   Cbar diag (GPa) = 209.574 196.975 195.005 124.931 128.794 114.708   (rel. asymmetry 9.03855e-10)
+    convergence check: relSolInc=1.12929e-05 (tol 1e-05), maxDamageInc=0.00085197 (tol 1e-05), relResidual=1.99325e-05 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 19 (T = 1800):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-1.09329e+08, max=2.07975e+08, tension fraction=0.999588, above threshold=0.111283
+   damage: mean=0.00519489, max=0.53344
+   <sigma> norm=1.61175 (trace/3 = -0.895138)
+   Ebar (diag) = -0.00077076, -0.000846246, -0.000828134   alphaBar (diag) = 3.8538e-06, 4.23123e-06, 4.14067e-06
+   Cbar diag (GPa) = 209.574 196.975 195.005 124.931 128.794 114.708   (rel. asymmetry 9.03856e-10)
+    convergence check: relSolInc=7.30008e-06 (tol 1e-05), maxDamageInc=0.000622708 (tol 1e-05), relResidual=1.34969e-05 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 20 (T = 1800):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-1.09329e+08, max=2.08005e+08, tension fraction=0.999588, above threshold=0.111283
+   damage: mean=0.00519486, max=0.533431
+   <sigma> norm=4.09232 (trace/3 = 2.17015)
+   Ebar (diag) = -0.00077076, -0.000846246, -0.000828134   alphaBar (diag) = 3.8538e-06, 4.23123e-06, 4.14067e-06
+   Cbar diag (GPa) = 209.574 196.975 195.005 124.931 128.794 114.708   (rel. asymmetry 9.03854e-10)
+    convergence check: relSolInc=4.7969e-06 (tol 1e-05), maxDamageInc=0.000392559 (tol 1e-05), relResidual=9.29685e-06 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 21 (T = 1800):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-1.09329e+08, max=2.08015e+08, tension fraction=0.999588, above threshold=0.111283
+   damage: mean=0.00519488, max=0.533438
+   <sigma> norm=2.56814 (trace/3 = -1.34069)
+   Ebar (diag) = -0.00077076, -0.000846246, -0.000828134   alphaBar (diag) = 3.8538e-06, 4.23123e-06, 4.14067e-06
+   Cbar diag (GPa) = 209.574 196.975 195.005 124.931 128.794 114.708   (rel. asymmetry 9.03855e-10)
+    convergence check: relSolInc=3.32063e-06 (tol 1e-05), maxDamageInc=0.000183348 (tol 1e-05), relResidual=2.07482e-06 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 22 (T = 1800):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-1.09329e+08, max=2.08021e+08, tension fraction=0.999588, above threshold=0.111283
+   damage: mean=0.00519488, max=0.533437
+   <sigma> norm=0.11001 (trace/3 = -0.0358322)
+   Ebar (diag) = -0.00077076, -0.000846246, -0.000828134   alphaBar (diag) = 3.8538e-06, 4.23123e-06, 4.14067e-06
+   Cbar diag (GPa) = 209.574 196.975 195.005 124.931 128.794 114.708   (rel. asymmetry 9.03854e-10)
+    convergence check: relSolInc=6.86262e-07 (tol 1e-05), maxDamageInc=6.63909e-05 (tol 1e-05), relResidual=1.21022e-06 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 23 (T = 1800):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-1.09329e+08, max=2.08021e+08, tension fraction=0.999588, above threshold=0.111283
+   damage: mean=0.00519488, max=0.533437
+   <sigma> norm=0.0234049 (trace/3 = -0.0105867)
+   Ebar (diag) = -0.00077076, -0.000846246, -0.000828134   alphaBar (diag) = 3.8538e-06, 4.23123e-06, 4.14067e-06
+   Cbar diag (GPa) = 209.574 196.975 195.005 124.931 128.794 114.708   (rel. asymmetry 9.03853e-10)
+    convergence check: relSolInc=4.18644e-07 (tol 1e-05), maxDamageInc=5.47499e-05 (tol 1e-05), relResidual=1.12545e-06 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 24 (T = 1800):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-1.09329e+08, max=2.08011e+08, tension fraction=0.999588, above threshold=0.111283
+   damage: mean=0.00519488, max=0.533437
+   <sigma> norm=0.0551043 (trace/3 = -0.0157091)
+   Ebar (diag) = -0.00077076, -0.000846246, -0.000828134   alphaBar (diag) = 3.8538e-06, 4.23123e-06, 4.14067e-06
+   Cbar diag (GPa) = 209.574 196.975 195.005 124.931 128.794 114.708   (rel. asymmetry 9.03854e-10)
+    convergence check: relSolInc=3.88445e-07 (tol 1e-05), maxDamageInc=0.000238257 (tol 1e-05), relResidual=4.99485e-06 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 25 (T = 1800):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-1.09329e+08, max=2.08015e+08, tension fraction=0.999588, above threshold=0.111283
+   damage: mean=0.00519488, max=0.533437
+   <sigma> norm=0.174732 (trace/3 = 0.0894518)
+   Ebar (diag) = -0.00077076, -0.000846246, -0.000828134   alphaBar (diag) = 3.8538e-06, 4.23123e-06, 4.14067e-06
+   Cbar diag (GPa) = 209.574 196.975 195.005 124.931 128.794 114.708   (rel. asymmetry 9.03854e-10)
+    convergence check: relSolInc=1.72088e-06 (tol 1e-05), maxDamageInc=0.000169041 (tol 1e-05), relResidual=3.44395e-06 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 26 (T = 1800):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-1.09329e+08, max=2.08019e+08, tension fraction=0.999588, above threshold=0.111283
+   damage: mean=0.00519488, max=0.533436
+   <sigma> norm=0.149492 (trace/3 = -0.081348)
+   Ebar (diag) = -0.00077076, -0.000846246, -0.000828134   alphaBar (diag) = 3.8538e-06, 4.23123e-06, 4.14067e-06
+   Cbar diag (GPa) = 209.574 196.975 195.005 124.931 128.794 114.708   (rel. asymmetry 9.03853e-10)
+    convergence check: relSolInc=1.17585e-06 (tol 1e-05), maxDamageInc=0.000113359 (tol 1e-05), relResidual=2.38341e-06 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 27 (T = 1800):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-1.09329e+08, max=2.08018e+08, tension fraction=0.999588, above threshold=0.111283
+   damage: mean=0.00519488, max=0.533438
+   <sigma> norm=0.235162 (trace/3 = 0.12307)
+   Ebar (diag) = -0.00077076, -0.000846246, -0.000828134   alphaBar (diag) = 3.8538e-06, 4.23123e-06, 4.14067e-06
+   Cbar diag (GPa) = 209.574 196.975 195.005 124.931 128.794 114.708   (rel. asymmetry 9.03854e-10)
+    convergence check: relSolInc=8.15541e-07 (tol 1e-05), maxDamageInc=8.88088e-05 (tol 1e-05), relResidual=1.47141e-06 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 28 (T = 1800):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-1.09329e+08, max=2.08022e+08, tension fraction=0.999588, above threshold=0.111283
+   damage: mean=0.00519488, max=0.533437
+   <sigma> norm=0.126373 (trace/3 = -0.0341807)
+   Ebar (diag) = -0.00077076, -0.000846246, -0.000828134   alphaBar (diag) = 3.8538e-06, 4.23123e-06, 4.14067e-06
+   Cbar diag (GPa) = 209.574 196.975 195.005 124.931 128.794 114.708   (rel. asymmetry 9.03853e-10)
+    convergence check: relSolInc=4.8804e-07 (tol 1e-05), maxDamageInc=2.86378e-05 (tol 1e-05), relResidual=3.27489e-07 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 29 (T = 1800):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-1.09329e+08, max=2.08022e+08, tension fraction=0.999588, above threshold=0.111283
+   damage: mean=0.00519488, max=0.533437
+   <sigma> norm=0.0177411 (trace/3 = -0.0089297)
+   Ebar (diag) = -0.00077076, -0.000846246, -0.000828134   alphaBar (diag) = 3.8538e-06, 4.23123e-06, 4.14067e-06
+   Cbar diag (GPa) = 209.574 196.975 195.005 124.931 128.794 114.708   (rel. asymmetry 9.03852e-10)
+    convergence check: relSolInc=1.18542e-07 (tol 1e-05), maxDamageInc=1.46954e-05 (tol 1e-05), relResidual=2.34531e-07 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 30 (T = 1800):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-1.09329e+08, max=2.08022e+08, tension fraction=0.999588, above threshold=0.111283
+   damage: mean=0.00519488, max=0.533437
+   <sigma> norm=0.0113472 (trace/3 = -0.00628878)
+   Ebar (diag) = -0.00077076, -0.000846246, -0.000828134   alphaBar (diag) = 3.8538e-06, 4.23123e-06, 4.14067e-06
+   Cbar diag (GPa) = 209.574 196.975 195.005 124.931 128.794 114.708   (rel. asymmetry 9.03854e-10)
+    convergence check: relSolInc=7.79931e-08 (tol 1e-05), maxDamageInc=1.23924e-05 (tol 1e-05), relResidual=2.47328e-07 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 31 (T = 1800):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-1.09329e+08, max=2.08021e+08, tension fraction=0.999588, above threshold=0.111283
+   damage: mean=0.00519488, max=0.533437
+   <sigma> norm=0.0167581 (trace/3 = -0.00917692)
+   Ebar (diag) = -0.00077076, -0.000846246, -0.000828134   alphaBar (diag) = 3.8538e-06, 4.23123e-06, 4.14067e-06
+   Cbar diag (GPa) = 209.574 196.975 195.005 124.931 128.794 114.708   (rel. asymmetry 9.03853e-10)
+    convergence check: relSolInc=8.22759e-08 (tol 1e-05), maxDamageInc=4.99998e-05 (tol 1e-05), relResidual=9.68773e-07 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 32 (T = 1800):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-1.09329e+08, max=2.08021e+08, tension fraction=0.999588, above threshold=0.111283
+   damage: mean=0.00519488, max=0.533437
+   <sigma> norm=0.0486127 (trace/3 = 0.0248544)
+   Ebar (diag) = -0.00077076, -0.000846246, -0.000828134   alphaBar (diag) = 3.8538e-06, 4.23123e-06, 4.14067e-06
+   Cbar diag (GPa) = 209.574 196.975 195.005 124.931 128.794 114.708   (rel. asymmetry 9.03853e-10)
+    convergence check: relSolInc=3.27878e-07 (tol 1e-05), maxDamageInc=3.48672e-05 (tol 1e-05), relResidual=6.73588e-07 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 33 (T = 1800):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-1.09329e+08, max=2.08021e+08, tension fraction=0.999588, above threshold=0.111283
+   damage: mean=0.00519488, max=0.533436
+   <sigma> norm=0.0529256 (trace/3 = -0.0291808)
+   Ebar (diag) = -0.00077076, -0.000846246, -0.000828134   alphaBar (diag) = 3.8538e-06, 4.23123e-06, 4.14067e-06
+   Cbar diag (GPa) = 209.574 196.975 195.005 124.931 128.794 114.708   (rel. asymmetry 9.03852e-10)
+    convergence check: relSolInc=2.27933e-07 (tol 1e-05), maxDamageInc=2.57307e-05 (tol 1e-05), relResidual=4.71629e-07 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 34 (T = 1800):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-1.09329e+08, max=2.08022e+08, tension fraction=0.999588, above threshold=0.111283
+   damage: mean=0.00519488, max=0.533437
+   <sigma> norm=0.0650536 (trace/3 = 0.0350868)
+   Ebar (diag) = -0.00077076, -0.000846246, -0.000828134   alphaBar (diag) = 3.8538e-06, 4.23123e-06, 4.14067e-06
+   Cbar diag (GPa) = 209.574 196.975 195.005 124.931 128.794 114.708   (rel. asymmetry 9.03852e-10)
+    convergence check: relSolInc=1.59096e-07 (tol 1e-05), maxDamageInc=1.25909e-05 (tol 1e-05), relResidual=2.49279e-07 (tol 0.0001)
+Refinement cycle 0, temperature step 10, iteration 35 (T = 1800):
+   Cells: 64000, DoFs: 206763, CG iterations = 321
+   sigma_33 (local): min=-1.09329e+08, max=2.08022e+08, tension fraction=0.999588, above threshold=0.111283
+   damage: mean=0.00519488, max=0.533436
+   <sigma> norm=0.0160011 (trace/3 = -0.00866753)
+   Ebar (diag) = -0.00077076, -0.000846246, -0.000828134   alphaBar (diag) = 3.8538e-06, 4.23123e-06, 4.14067e-06
+   Cbar diag (GPa) = 209.574 196.975 195.005 124.931 128.794 114.708   (rel. asymmetry 9.03852e-10)
+    convergence check: relSolInc=8.33591e-08 (tol 1e-05), maxDamageInc=6.0321e-06 (tol 1e-05), relResidual=8.06182e-08 (tol 0.0001)
+cycle tempStep cells  dofs  meanDamage maxDamage maxSigmaZZ minSigmaZZ tensionFrac meanStressNorm 
+    0        1 64000 206763      0.000     0.000  3.723e+07 -1.064e+07       1.000      7.282e-07 
+    0        1 64000 206763      0.000     0.000  3.723e+07 -1.064e+07       1.000      7.282e-07 
+    0        2 64000 206763      0.000     0.000  7.446e+07 -2.129e+07       1.000      1.456e-06 
+    0        2 64000 206763      0.000     0.000  7.446e+07 -2.129e+07       1.000      1.456e-06 
+    0        3 64000 206763      0.000     0.000  1.117e+08 -3.193e+07       1.000      3.132e-06 
+    0        3 64000 206763      0.000     0.000  1.117e+08 -3.193e+07       1.000      3.132e-06 
+    0        4 64000 206763      0.000     0.000  1.489e+08 -4.258e+07       1.000      2.913e-06 
+    0        4 64000 206763      0.000     0.000  1.489e+08 -4.258e+07       1.000      2.913e-06 
+    0        5 64000 206763      0.000     0.000  1.862e+08 -5.322e+07       1.000      1.063e-05 
+    0        5 64000 206763      0.000     0.000  1.862e+08 -5.322e+07       1.000      1.063e-05 
+    0        6 64000 206763      0.000     0.077  2.057e+08 -6.387e+07       1.000      1.497e+02 
+    0        6 64000 206763      0.000     0.084  2.058e+08 -6.387e+07       1.000      2.234e+01 
+    0        6 64000 206763      0.000     0.085  2.059e+08 -6.387e+07       1.000      1.353e+00 
+    0        6 64000 206763      0.000     0.085  2.060e+08 -6.387e+07       1.000      3.202e-02 
+    0        6 64000 206763      0.000     0.085  2.060e+08 -6.387e+07       1.000      3.588e-04 
+    0        7 64000 206763      0.000     0.211  2.067e+08 -7.451e+07       1.000      1.437e+03 
+    0        7 64000 206763      0.000     0.238  2.062e+08 -7.452e+07       1.000      3.232e+02 
+    0        7 64000 206763      0.000     0.241  2.071e+08 -7.452e+07       1.000      2.201e+01 
+    0        7 64000 206763      0.000     0.241  2.073e+08 -7.452e+07       1.000      1.153e+00 
+    0        7 64000 206763      0.000     0.241  2.074e+08 -7.452e+07       1.000      6.452e-02 
+    0        7 64000 206763      0.000     0.241  2.074e+08 -7.452e+07       1.000      4.293e-03 
+    0        8 64000 206763      0.000     0.340  2.064e+08 -8.517e+07       1.000      1.083e+04 
+    0        8 64000 206763      0.000     0.367  2.063e+08 -8.537e+07       1.000      1.896e+03 
+    0        8 64000 206763      0.000     0.371  2.069e+08 -8.540e+07       1.000      1.512e+02 
+    0        8 64000 206763      0.000     0.372  2.071e+08 -8.540e+07       1.000      1.362e+01 
+    0        8 64000 206763      0.000     0.372  2.071e+08 -8.540e+07       1.000      9.085e-01 
+    0        8 64000 206763      0.000     0.372  2.071e+08 -8.540e+07       1.000      3.426e-01 
+    0        8 64000 206763      0.000     0.372  2.071e+08 -8.540e+07       1.000      3.084e-02 
+    0        8 64000 206763      0.000     0.372  2.071e+08 -8.540e+07       1.000      1.302e-03 
+    0        9 64000 206763      0.001     0.444  2.062e+08 -9.608e+07       1.000      8.007e+04 
+    0        9 64000 206763      0.001     0.464  2.062e+08 -9.689e+07       1.000      1.173e+04 
+    0        9 64000 206763      0.001     0.467  2.066e+08 -9.701e+07       1.000      1.036e+03 
+    0        9 64000 206763      0.001     0.467  2.070e+08 -9.702e+07       1.000      1.632e+02 
+    0        9 64000 206763      0.001     0.467  2.073e+08 -9.703e+07       1.000      9.802e+00 
+    0        9 64000 206763      0.001     0.467  2.074e+08 -9.703e+07       1.000      2.177e+01 
+    0        9 64000 206763      0.001     0.467  2.074e+08 -9.703e+07       1.000      3.275e+01 
+    0        9 64000 206763      0.001     0.467  2.074e+08 -9.703e+07       1.000      2.242e+01 
+    0        9 64000 206763      0.001     0.467  2.074e+08 -9.703e+07       1.000      2.004e+00 
+    0        9 64000 206763      0.001     0.467  2.074e+08 -9.703e+07       1.000      5.628e-02 
+    0        9 64000 206763      0.001     0.467  2.074e+08 -9.703e+07       1.000      2.100e-01 
+    0        9 64000 206763      0.001     0.467  2.074e+08 -9.703e+07       1.000      2.199e-01 
+    0        9 64000 206763      0.001     0.467  2.074e+08 -9.703e+07       1.000      5.295e-01 
+    0        9 64000 206763      0.001     0.467  2.074e+08 -9.703e+07       1.000      3.255e-01 
+    0        9 64000 206763      0.001     0.467  2.074e+08 -9.703e+07       1.000      1.288e-02 
+    0       10 64000 206763      0.005     0.522  2.060e+08 -1.078e+08       1.000      5.124e+05 
+    0       10 64000 206763      0.005     0.534  2.060e+08 -1.091e+08       1.000      5.842e+04 
+    0       10 64000 206763      0.005     0.534  2.064e+08 -1.093e+08       1.000      7.293e+03 
+    0       10 64000 206763      0.005     0.534  2.071e+08 -1.093e+08       1.000      1.282e+03 
+    0       10 64000 206763      0.005     0.534  2.075e+08 -1.093e+08       1.000      9.430e+01 
+    0       10 64000 206763      0.005     0.533  2.078e+08 -1.093e+08       1.000      2.075e+02 
+    0       10 64000 206763      0.005     0.533  2.076e+08 -1.093e+08       1.000      5.885e+02 
+    0       10 64000 206763      0.005     0.533  2.078e+08 -1.093e+08       1.000      5.125e+02 
+    0       10 64000 206763      0.005     0.533  2.079e+08 -1.093e+08       1.000      1.093e+02 
+    0       10 64000 206763      0.005     0.533  2.079e+08 -1.093e+08       1.000      2.351e+00 
+    0       10 64000 206763      0.005     0.533  2.077e+08 -1.093e+08       1.000      8.305e+00 
+    0       10 64000 206763      0.005     0.533  2.077e+08 -1.093e+08       1.000      3.625e+00 
+    0       10 64000 206763      0.005     0.533  2.078e+08 -1.093e+08       1.000      5.389e+00 
+    0       10 64000 206763      0.005     0.533  2.080e+08 -1.093e+08       1.000      7.281e+00 
+    0       10 64000 206763      0.005     0.533  2.080e+08 -1.093e+08       1.000      5.134e+00 
+    0       10 64000 206763      0.005     0.533  2.080e+08 -1.093e+08       1.000      2.418e-01 
+    0       10 64000 206763      0.005     0.533  2.079e+08 -1.093e+08       1.000      3.788e-01 
+    0       10 64000 206763      0.005     0.533  2.079e+08 -1.093e+08       1.000      1.342e+00 
+    0       10 64000 206763      0.005     0.533  2.080e+08 -1.093e+08       1.000      1.612e+00 
+    0       10 64000 206763      0.005     0.533  2.080e+08 -1.093e+08       1.000      4.092e+00 
+    0       10 64000 206763      0.005     0.533  2.080e+08 -1.093e+08       1.000      2.568e+00 
+    0       10 64000 206763      0.005     0.533  2.080e+08 -1.093e+08       1.000      1.100e-01 
+    0       10 64000 206763      0.005     0.533  2.080e+08 -1.093e+08       1.000      2.340e-02 
+    0       10 64000 206763      0.005     0.533  2.080e+08 -1.093e+08       1.000      5.510e-02 
+    0       10 64000 206763      0.005     0.533  2.080e+08 -1.093e+08       1.000      1.747e-01 
+    0       10 64000 206763      0.005     0.533  2.080e+08 -1.093e+08       1.000      1.495e-01 
+    0       10 64000 206763      0.005     0.533  2.080e+08 -1.093e+08       1.000      2.352e-01 
+    0       10 64000 206763      0.005     0.533  2.080e+08 -1.093e+08       1.000      1.264e-01 
+    0       10 64000 206763      0.005     0.533  2.080e+08 -1.093e+08       1.000      1.774e-02 
+    0       10 64000 206763      0.005     0.533  2.080e+08 -1.093e+08       1.000      1.135e-02 
+    0       10 64000 206763      0.005     0.533  2.080e+08 -1.093e+08       1.000      1.676e-02 
+    0       10 64000 206763      0.005     0.533  2.080e+08 -1.093e+08       1.000      4.861e-02 
+    0       10 64000 206763      0.005     0.533  2.080e+08 -1.093e+08       1.000      5.293e-02 
+    0       10 64000 206763      0.005     0.533  2.080e+08 -1.093e+08       1.000      6.505e-02 
+    0       10 64000 206763      0.005     0.533  2.080e+08 -1.093e+08       1.000      1.600e-02 
+Wrote /home/dealii/myWork/coolingModelRevision/resolvedGrainCooling/results/bc-resolution-sweep/periodic_64cpg_seed20260905/periodic_64cpg_seed20260905_macroscopic_history.csv (10 steps).
+Wrote ParaView time series polycrystalCooling.pvd (10 steps). Open THIS, not the individual .vtu files.
+
+
++---------------------------------------------+------------+------------+
+| Total wallclock time elapsed since start    |   4.4e+03s |            |
+|                                             |            |            |
+| Section                         | no. calls |  wall time | % of total |
++---------------------------------+-----------+------------+------------+
+| Assemble system                 |        89 |      64.1s |       1.5% |
+| Grain stiffness cache           |        10 |   0.00418s |         0% |
+| Linear solver setup             |        79 |     0.408s |         0% |
+| Predict damage increment        |        79 |      51.3s |       1.2% |
+| Setup of system                 |         1 |      0.63s |         0% |
+| Solve system                    |       553 |  4.08e+03s |        93% |
++---------------------------------+-----------+------------+------------+
+

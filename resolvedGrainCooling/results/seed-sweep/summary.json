@@ -1,0 +1,130 @@
+[
+ {
+  "seed": 20260905,
+  "seconds": 92.9,
+  "minS33": 26804600.0,
+  "maxS33": 206841000.0,
+  "overThreshold": 0.210234,
+  "meanDamage": 0.00691352,
+  "maxDamage": 0.370154,
+  "meanStressNorm": 0.114567,
+  "alphaBar": [
+   3.25355e-06,
+   3.53076e-06,
+   3.45848e-06
+  ],
+  "damageWarning": false
+ },
+ {
+  "seed": 11,
+  "seconds": 89.4,
+  "minS33": 24737800.0,
+  "maxS33": 206660000.0,
+  "overThreshold": 0.224453,
+  "meanDamage": 0.00703518,
+  "maxDamage": 0.321065,
+  "meanStressNorm": 0.222669,
+  "alphaBar": [
+   3.39782e-06,
+   3.48459e-06,
+   3.22652e-06
+  ],
+  "damageWarning": false
+ },
+ {
+  "seed": 22,
+  "seconds": 89.6,
+  "minS33": 36054000.0,
+  "maxS33": 206826000.0,
+  "overThreshold": 0.216156,
+  "meanDamage": 0.00713662,
+  "maxDamage": 0.313773,
+  "meanStressNorm": 0.0512297,
+  "alphaBar": [
+   3.49561e-06,
+   3.25089e-06,
+   3.47211e-06
+  ],
+  "damageWarning": false
+ },
+ {
+  "seed": 33,
+  "seconds": 93.0,
+  "minS33": 45125300.0,
+  "maxS33": 207121000.0,
+  "overThreshold": 0.219406,
+  "meanDamage": 0.0071112,
+  "maxDamage": 0.334858,
+  "meanStressNorm": 0.153772,
+  "alphaBar": [
+   3.46732e-06,
+   3.30962e-06,
+   3.4198e-06
+  ],
+  "damageWarning": false
+ },
+ {
+  "seed": 44,
+  "seconds": 99.6,
+  "minS33": 26217700.0,
+  "maxS33": 206884000.0,
+  "overThreshold": 0.210875,
+  "meanDamage": 0.00708458,
+  "maxDamage": 0.407231,
+  "meanStressNorm": 0.0500948,
+  "alphaBar": [
+   3.38058e-06,
+   3.55914e-06,
+   3.43202e-06
+  ],
+  "damageWarning": false
+ },
+ {
+  "seed": 55,
+  "seconds": 94.6,
+  "minS33": 26200300.0,
+  "maxS33": 206668000.0,
+  "overThreshold": 0.224078,
+  "meanDamage": 0.00736798,
+  "maxDamage": 0.370158,
+  "meanStressNorm": 0.145944,
+  "alphaBar": [
+   3.34235e-06,
+   3.43892e-06,
+   3.34792e-06
+  ],
+  "damageWarning": false
+ },
+ {
+  "seed": 66,
+  "seconds": 100.1,
+  "minS33": 22495400.0,
+  "maxS33": 207358000.0,
+  "overThreshold": 0.225641,
+  "meanDamage": 0.00760599,
+  "maxDamage": 0.344633,
+  "meanStressNorm": 0.168138,
+  "alphaBar": [
+   3.51273e-06,
+   3.70124e-06,
+   3.00814e-06
+  ],
+  "damageWarning": false
+ },
+ {
+  "seed": 77,
+  "seconds": 93.9,
+  "minS33": 20546300.0,
+  "maxS33": 207104000.0,
+  "overThreshold": 0.232359,
+  "meanDamage": 0.00770956,
+  "maxDamage": 0.381139,
+  "meanStressNorm": 0.0409457,
+  "alphaBar": [
+   3.47133e-06,
+   3.25168e-06,
+   3.37917e-06
+  ],
+  "damageWarning": false
+ }
+]
