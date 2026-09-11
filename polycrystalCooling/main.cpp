@@ -33,10 +33,13 @@
 //                       there is a surface layer with no RVE character, and no scale separation.
 //                       Good physics near the centre, wrong physics near the faces.
 //
-//   "periodic"          The target formulation: u = Ebar.x + u_periodic with Ebar determined by
-//                       <sigma> = 0. NOT YET IMPLEMENTED -- see assemble_macroscopic_blocks()
-//                       and solve_with_zero_mean_stress() below, which carry the block structure
-//                       and the 7-solve algorithm as a template to be filled in.
+//   "periodic"          The target formulation: u = Ebar.x + u_periodic, with the macroscopic
+//                       strain Ebar carried as six extra unknowns and fixed by <sigma> = 0. No
+//                       surface layer and no spurious offset, so this is the one to draw physics
+//                       from. Costs seven solves per assembly (one thermal, six unit-strain, all
+//                       sharing one matrix) and yields the homogenized stiffness Cbar and the
+//                       effective CTE alphaBar as by-products. See solve_with_zero_mean_stress()
+//                       and homogenization.md.
 //
 // The three share every other code path (assembly, damage, output), so results are directly
 // comparable and the boundary treatment is the only thing that changes.
@@ -66,7 +69,6 @@
 // temperature step.
 //
 // NOT YET DONE (see README.md):
-//   [ ] periodic boundary constraints + the macroscopic-strain unknowns (BC type "periodic")
 //   [ ] several seeds / realization statistics (deliberately descoped for now)
 //   [ ] sourced graphite CTE values -- input.json still carries flagged PLACEHOLDERS
 //
@@ -88,6 +90,7 @@
 #include <deal.II/lac/sparse_matrix.h>
 #include <deal.II/lac/dynamic_sparsity_pattern.h>
 #include <deal.II/lac/solver_cg.h>
+#include <deal.II/lac/sparse_direct.h>
 #include <deal.II/lac/precondition.h>
 #include <deal.II/lac/affine_constraints.h>
 
@@ -358,6 +361,17 @@ namespace StepCooling
                         "that has no RVE character. 'periodic' is the target formulation "
                         "(u = Ebar.x + u_periodic with <sigma>=0) and is NOT YET IMPLEMENTED.");
 
+      prm.declare_entry("UniformOrientation",
+                        "false",
+                        Patterns::Bool(),
+                        "SMOKE TEST. Give every grain the SAME orientation, making the RVE a "
+                        "single homogeneous crystal, for which the periodic answer is known in "
+                        "closed form: Cbar = C exactly, Ebar = alpha*dT, the fluctuation u~ is "
+                        "identically zero and so is the stress, POINTWISE. One switch therefore "
+                        "exercises periodicity, the pin, the eigenstrain path, all seven solves "
+                        "and the recovery at once, against an answer that includes zero stress. "
+                        "Run this after any change to the periodic machinery.");
+
       prm.declare_entry("OrientationSeed",
                         "20260905",
                         Patterns::Integer(0),
@@ -500,6 +514,22 @@ namespace StepCooling
       // cost CG iterations and will not be wanted for every production run -- and because the
       // upcoming refined/perturbed problems are more ill-conditioned, where demanding 1e-12
       // within the iteration cap may not be achievable.
+      prm.declare_entry("LinearSolverType",
+                        "cg",
+                        Patterns::Selection("direct|cg"),
+                        "'direct' factorizes once with UMFPACK and then back-substitutes, which "
+                        "is what the periodic formulation wants: it solves SEVEN systems sharing "
+                        "one matrix, so the factorization is amortized and the extra six solves "
+                        "are nearly free. It is also EXACT, which matters while validating -- the "
+                        "uniform-orientation smoke test predicts sigma = 0 pointwise, and a "
+                        "solver tolerance has masked a coupling check in this project before. "
+                        "'cg' is iterative (SSOR-preconditioned, preconditioner built once and "
+                        "reused across all seven right-hand sides). MEASURED at 3993 DoFs: the "
+                        "two cost the same per solve, but UMFPACK adds ~0.1 s of factorization "
+                        "per assembly, so cg is already the faster default here and only gets "
+                        "more so as 3D fill-in grows. Keep 'direct' for validating changes to "
+                        "the periodic machinery, where exactness is worth more than speed.");
+
       prm.declare_entry("LinearSolverTolerance",
                         "1e-6",
                         Patterns::Double(0),
@@ -768,6 +798,7 @@ namespace StepCooling
         , JxW_q(quadrature.size())
         , shapeGradSymm(fe.n_dofs_per_cell(),
                         std::vector<SymmetricTensor<2, dim>>(quadrature.size()))
+        , macroCoupling_i(fe.n_dofs_per_cell())
       {}
 
       Scratch(const Scratch &s)
@@ -776,12 +807,19 @@ namespace StepCooling
         , globalElasticTensor_q(s.globalElasticTensor_q.size())
         , JxW_q(s.JxW_q.size())
         , shapeGradSymm(s.shapeGradSymm)
+        , macroCoupling_i(s.macroCoupling_i.size())
       {}
 
       FEValues<dim> fe_values;
       std::vector<SymmetricTensor<4, dim>> globalElasticTensor_q;
       std::vector<double> JxW_q;
       std::vector<std::vector<SymmetricTensor<2, dim>>> shapeGradSymm;
+      // L's per-cell contribution, ONE SYMMETRIC RANK-2 TENSOR PER SHAPE FUNCTION:
+      //     macroCoupling_i[i] = integral over the cell of  eps(phi_i) : C  dV
+      // Kept in tensor space and converted to a Kelvin 6-vector exactly once, in the cell loop
+      // below. That is the whole discipline for keeping the sqrt(2)s inside deal.II: never index
+      // a Kelvin vector by hand, and the conversion cannot be got wrong.
+      std::vector<SymmetricTensor<2, dim>> macroCoupling_i;
       // No per-q temperature and no body force any more: the RVE cools uniformly (so the
       // temperature rise is one scalar for the whole step) and the cooling model has no body
       // force at all -- the thermal load enters as an eigenstrain inside sigma. That second
@@ -794,6 +832,9 @@ namespace StepCooling
       FullMatrix<double> cell_matrix;
       Vector<double> cell_rhs;
       std::vector<types::global_dof_index> local_dof_indices;
+      // dofs_per_cell x 6: column k is this cell's contribution to L's k-th Kelvin column.
+      // Left empty (and untouched) unless the periodic formulation is active.
+      FullMatrix<double> cell_L;
     };
   } // namespace AssemblyScratch
 
@@ -889,8 +930,17 @@ namespace StepCooling
     void assemble_system(double curTemperature);
     void assemble_cells_serial(double curTemperature);
     void assemble_cells_workstream(double curTemperature);
+    // Split so the SEVEN periodic solves share one factorization / one preconditioner: the
+    // matrix is identical across them and only the right-hand side changes (see
+    // solve_with_zero_mean_stress). prepareLinearSolver() must be called after every assembly,
+    // before the first solveLinearSystem() against that matrix.
     void solve();
+    void prepareLinearSolver();
+    void solveLinearSystem(const Vector<double> &rhs, Vector<double> &dst);
+    std::unique_ptr<SparseDirectUMFPACK> directSolver;
+    std::unique_ptr<PreconditionSSOR<SparseMatrix<double>>> cgPreconditioner;
     mutable unsigned int lastCgIterations = 0;
+    double lastCbarAsymmetry = 0.0;   // relative asymmetry of Cbar; see solve_with_zero_mean_stress
     // output_results() is const and needs the current temperature to re-evaluate stress; the
     // temperature-step loop records it here rather than threading it through the signature.
     double lastProcessedTemperature = 0.0;
@@ -918,45 +968,64 @@ namespace StepCooling
     // load and destroy the <sigma> = 0 property the free-surface case exists to have.
     void constrainRigidBodyModes();
 
+    // Constrains all dim components of the DoFs sitting at `where` to zero. Used by the periodic
+    // formulation to remove the three rigid translations.
+    void constrainOneVertex(const Point<dim> &where);
+
     // ----------------------------------------------------------------------------------------
-    // Macroscopic strain unknowns for the periodic formulation  -- TEMPLATE, NOT IMPLEMENTED
+    // Macroscopic strain unknowns for the periodic formulation
     // ----------------------------------------------------------------------------------------
-    // See homogenization.md sections 6 and 8 for the derivation these must match. The (n+6)
-    // system is
+    // homogenization.md section 6 gives the (n+6) system:
     //
-    //     [ K   L  ] [ U    ]   [ F_theta ]        K = integral( B^T C B )       (n x n, sparse)
-    //     [ L^T H  ] [ Ebar ] = [ P_theta ]        L = integral( B^T C   )       (n x 6, DENSE)
-    //                                             H = integral( C       )       (6 x 6, dense)
+    //     [ K   L  ] [ U    ]   [ F_theta ]     K = integral( B^T C B )     (n x n, sparse)
+    //     [ L^T H  ] [ Ebar ] = [ P_theta ]     L = integral( B^T C   )     (n x 6, DENSE)
+    //                                          H = integral( C       )     (6 x 6, dense)
     //
-    // and is NEVER assembled as one matrix: the six dense rows/columns would wreck SSOR/AMG
-    // (homogenization.md section 11). Instead K keeps exactly the sparsity, symmetry and
-    // preconditioner it has today, L is six ordinary vectors and H is a 6x6 FullMatrix, and the
-    // coupling is resolved by static condensation in solve_with_zero_mean_stress().
+    // It is NEVER assembled as one matrix: six dense rows/columns would wreck SSOR/AMG
+    // (section 11). K keeps exactly the sparsity, symmetry and preconditioner it already has,
+    // and the coupling is resolved by static condensation in solve_with_zero_mean_stress().
     //
-    // Note L and the 6-row block are transposes of one another BY MAJOR SYMMETRY OF C. Assemble
-    // them independently and check: if they do not come out transposed, something is wrong. That
-    // same symmetry is what keeps the condensed system SPD and CG applicable.
+    // WHY H AND P_theta ARE NOT MEMBERS. The obvious route computes Cbar = H - L^T Y, but that
+    // needs L in BOTH forms -- the solves take the constrained L_hat = P^T L, while the L^T U
+    // product takes the raw L -- and mixing them is a silent wrong answer, not a crash
+    // (section 8). Building Cbar column by column from a quadrature average of sigma instead is
+    // algebraically identical,
+    //
+    //     Cbar column k = < C : (I^(k) + sym grad u~^(k)) > = (1/|Omega|) [H - L^T Y]_k
+    //
+    // reuses computeAverageStress(), and never forms L^T at all. So only L is stored.
     static constexpr unsigned int nMacroDofs = 6; // Kelvin 6-vector, matching Physics::Notation
 
-    // Assembles the three coupling objects below alongside the usual K/F_theta. Must be called
-    // with the same frozen damage state as assemble_system().
-    void assemble_macroscopic_blocks(double curTemperature);
+    // Set only for BoundaryConditionType::periodic. When true the assembly cell loops build L's
+    // six columns alongside K and F_theta, in the SAME pass -- they share every per-quadrature
+    // quantity (rotated C, shape gradients, JxW), and a separate pass could disagree with this
+    // one about the frozen damage state.
+    bool assembleMacroCoupling = false;
+    void distributeMacroCouplingColumns(
+      const FullMatrix<double> &cell_L,
+      const std::vector<types::global_dof_index> &local_dof_indices);
 
-    // The 7-solve: z = K^-1 F_theta, Y = K^-1 L (6 columns, SAME matrix and preconditioner),
-    // Cbar_times_volume = H - L^T Y, then Ebar = (H - L^T Y)^-1 (P_theta - L^T z) and finally
-    // U = z - Y Ebar with no extra solve. Leaves the answer in solDisplacement/macroscopicStrain.
-    void solve_with_zero_mean_stress();
+    // The 7-solve of section 6: U0 = K^-1 F_theta, Y_k = K^-1 L_k (six more, same matrix and
+    // same factorization), Cbar by quadrature, Ebar = -Cbar^-1 sigma_bar_theta, and finally
+    // U = U0 - sum_k Ebar_k Y_k with no extra solve. Leaves the answer in solDisplacement and
+    // macroscopicStrain.
+    void solve_with_zero_mean_stress(double curTemperature);
 
-    // Volume average of the stress over the RVE, by plain quadrature summation. Used both as the
-    // <sigma> = 0 residual check and (with unit macroscopic strains) to build Cbar column by
-    // column -- see homogenization.md section 8, which recommends this over forming L^T
-    // explicitly, since the constrained-vs-unconstrained L distinction is an easy silent bug.
+    // Volume average of the stress over the RVE, by plain quadrature summation. Used as the
+    // <sigma> = 0 residual check, and with unit macroscopic strains to build Cbar column by
+    // column. includeThermalStrain is false for the unit-strain solves, whose whole point is the
+    // purely mechanical response.
+    SymmetricTensor<2, dim> computeAverageStress(
+      double curTemperature,
+      const Vector<double> &displacementField,
+      const SymmetricTensor<2, dim> &macroStrain,
+      bool includeThermalStrain) const;
     SymmetricTensor<2, dim> computeAverageStress(double curTemperature) const;
 
     // L: six right-hand-side vectors, one per Kelvin component of Ebar.
     std::vector<Vector<double>> macroCouplingColumns;
-    // H = integral(C) over the RVE, and the homogenized stiffness that condensation produces.
-    FullMatrix<double> macroStiffnessH{nMacroDofs, nMacroDofs};
+    // Homogenized stiffness Cbar, a by-product of the condensation and a result in its own
+    // right (it gives the effective CTE, and its evolution is a macroscopic softening curve).
     FullMatrix<double> homogenizedStiffness{nMacroDofs, nMacroDofs};
     // The macroscopic strain itself: zero for every non-periodic BC family.
     SymmetricTensor<2, dim> macroscopicStrain;
@@ -1301,6 +1370,45 @@ namespace StepCooling
         "vertices. Check LengthOfTheBody against the mesh.");
   }
 
+  template <int dim>
+  void ElasticProblem<dim>::constrainOneVertex(const Point<dim> &where)
+  {
+    const double tol = 1e-8 * prm.get_double({"ModelParameters"}, "LengthOfTheBody");
+    std::vector<Point<dim>> supportLocations(dof_handler.n_dofs());
+    DoFTools::map_dofs_to_support_points(MappingQ1<dim>(), dof_handler, supportLocations);
+
+    std::array<bool, dim> pinned{};
+    std::vector<types::global_dof_index> dofsOnCell(fe.n_dofs_per_cell());
+    for (const auto &cell : dof_handler.active_cell_iterators())
+    {
+      cell->get_dof_indices(dofsOnCell);
+      for (unsigned int k = 0; k < fe.n_dofs_per_cell(); ++k)
+      {
+        const unsigned int component = fe.system_to_component_index(k).first;
+        const types::global_dof_index gi = dofsOnCell[k];
+        if (pinned[component] || supportLocations[gi].distance(where) > tol)
+          continue;
+        // Pinning a DoF that periodicity already constrained would be an over-determined
+        // constraint, which AffineConstraints resolves silently rather than reporting. The point
+        // of pinning the origin is that it is a periodicity MASTER; verify that rather than
+        // trust it.
+        if (constraints.is_constrained(gi))
+          throw std::runtime_error(
+            "the vertex chosen for pinning is already constrained by periodicity -- pick a "
+            "master vertex (the origin should be one, since periodicity slaves the '+' faces "
+            "to the '-' faces).");
+        constraints.add_line(gi);   // homogeneous: inhomogeneity defaults to 0
+        pinned[component] = true;
+      }
+    }
+
+    for (unsigned int d = 0; d < dim; ++d)
+      if (!pinned[d])
+        throw std::runtime_error(
+          "could not pin component " + std::to_string(d) + " at the requested vertex -- it was "
+          "not found as a mesh vertex. Check LengthOfTheBody against the mesh.");
+  }
+
   // Rebuilds `constraints` from scratch for the selected BC family. Must be called before every
   // assembly, because AffineConstraints cannot be added to once closed.
   template <int dim>
@@ -1335,32 +1443,32 @@ namespace StepCooling
 
       case BoundaryConditionType::periodic:
       {
-        // -----------------------------------------------------------------------------------
-        // TEMPLATE -- NOT YET IMPLEMENTED. Intended shape:
-        //
-        //   std::vector<GridTools::PeriodicFacePair<
-        //     typename DoFHandler<dim>::cell_iterator>> matchedPairs;
-        //   GridTools::collect_periodic_faces(dof_handler, BoundaryIds::xMinus,
-        //                                     BoundaryIds::xPlus, /*direction=*/0, matchedPairs);
-        //   ... same for y (direction 1) and z (direction 2) ...
-        //   DoFTools::make_periodicity_constraints<dim, dim>(matchedPairs, constraints);
-        //
-        // These are HOMOGENEOUS constraints on the fluctuation u_periodic. Ebar does NOT enter
-        // here: it is carried as six separate unknowns and enters assembly as an eigenstrain
+        // Homogeneous constraints on the FLUCTUATION u~ only. Ebar does not appear here: it is
+        // carried as six separate unknowns and enters assembly as an eigenstrain
         // (homogenization.md section 8), which is why no inhomogeneity is needed and why the
-        // existing thermal-load code path can be reused verbatim.
+        // existing thermal-load code path is reused unchanged.
+        std::vector<GridTools::PeriodicFacePair<typename DoFHandler<dim>::cell_iterator>>
+          matchedPairs;
+        GridTools::collect_periodic_faces(dof_handler, BoundaryIds::xMinus, BoundaryIds::xPlus,
+                                          /*direction=*/0, matchedPairs);
+        GridTools::collect_periodic_faces(dof_handler, BoundaryIds::yMinus, BoundaryIds::yPlus,
+                                          /*direction=*/1, matchedPairs);
+        GridTools::collect_periodic_faces(dof_handler, BoundaryIds::zMinus, BoundaryIds::zPlus,
+                                          /*direction=*/2, matchedPairs);
+        DoFTools::make_periodicity_constraints<dim, dim>(matchedPairs, constraints);
+
+        // Pin ONE vertex, three components. Periodicity leaves exactly the three rigid
+        // TRANSLATIONS unconstrained -- rigid rotations are already excluded, because u~ = W.x
+        // with W skew is not periodic -- so three constraints is exactly enough, and pinning any
+        // more would apply a real load and destroy <sigma> = 0.
         //
-        // Then pin ONE vertex (3 components) to remove the rigid translations. Rotations are
-        // already excluded, because a rigid rotation field is not periodic -- so three
-        // constraints is exactly enough and pinning more would apply a real load.
-        // -----------------------------------------------------------------------------------
-        throw std::runtime_error(
-          "BoundaryConditions/Type = 'periodic' is not implemented yet. Use 'zeroDisplacement' "
-          "or 'freeSurface'. See applyBoundaryConstraints(), assemble_macroscopic_blocks() and "
-          "solve_with_zero_mean_stress() for the templates, and homogenization.md for the "
-          "derivation they must implement.");
-      }
-    }
+        // The origin is safe to pin: make_periodicity_constraints slaves the "+" face to the
+        // "-" face, and (0,0,0) lies on all three "-" faces, so it is a master everywhere. That
+        // is checked rather than assumed -- pinning an already-constrained DoF would silently
+        // produce an over-determined constraint.
+        constrainOneVertex(Point<dim>(0.0, 0.0, 0.0));
+        break;
+      }    }
 
     constraints.close();
   }
@@ -1380,6 +1488,9 @@ namespace StepCooling
     // over a temperature step instead of reflecting only the current state.
     system_matrix = 0;
     system_rhs    = 0;
+    if (assembleMacroCoupling)
+      for (auto &column : macroCouplingColumns)
+        column = 0;
 
     if (prm.get_bool({"ParallelizationParameters"}, "UseWorkStream"))
       assemble_cells_workstream(curTemperature);
@@ -1400,6 +1511,7 @@ namespace StepCooling
 
     FullMatrix<double> cell_matrix(dofs_per_cell, dofs_per_cell);
     Vector<double> cell_rhs(dofs_per_cell);
+    FullMatrix<double> cell_L(dofs_per_cell, nMacroDofs);
     std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
 
     // Per-(cell, q) data that does NOT depend on the (i, j) test/trial function indices:
@@ -1454,6 +1566,18 @@ namespace StepCooling
             cell_matrix(i, j) +=
               (shapeGradSymm[i][q] * (globalElasticTensor_q[q] * shapeGradSymm[j][q])) * JxW_q[q];
 
+        // L's k-th column, only when the macroscopic strain is an unknown. Accumulated as a
+        // TENSOR over the quadrature points and converted to Kelvin once, after the q loop.
+        if (assembleMacroCoupling)
+        {
+          SymmetricTensor<2,dim> coupling;
+          for (const unsigned int q : fe_values.quadrature_point_indices())
+            coupling += (shapeGradSymm[i][q] * globalElasticTensor_q[q]) * JxW_q[q];
+          const Vector<double> kelvin = Physics::Notation::Kelvin::to_vector(coupling);
+          for (unsigned int k = 0; k < nMacroDofs; ++k)
+            cell_L(i, k) = kelvin[k];
+        }
+
         // Thermal load only -- there is NO body force in this model. Unlike the uniform-
         // temperature MMS case (where this term integrated to zero against every admissible
         // test function because C and alpha were spatially constant), here C and alpha jump
@@ -1466,6 +1590,8 @@ namespace StepCooling
       }
       cell->get_dof_indices(local_dof_indices);
       constraints.distribute_local_to_global(cell_matrix, cell_rhs, local_dof_indices, system_matrix, system_rhs);
+      if (assembleMacroCoupling)
+        distributeMacroCouplingColumns(cell_L, local_dof_indices);
     }
   }
 
@@ -1498,6 +1624,11 @@ namespace StepCooling
       copy.local_dof_indices.resize(dofs_per_cell);
       copy.cell_matrix = 0;
       copy.cell_rhs    = 0;
+      if (assembleMacroCoupling)
+      {
+        copy.cell_L.reinit(dofs_per_cell, nMacroDofs);
+        copy.cell_L = 0;
+      }
 
       const SymmetricTensor<2,dim> localcteTensor = cteTensor.getcteTensor(curTemperature);
       const SymmetricTensor<2,dim> globalcteTensor =
@@ -1524,6 +1655,19 @@ namespace StepCooling
               (scratch.shapeGradSymm[i][q] *
                (scratch.globalElasticTensor_q[q] * scratch.shapeGradSymm[j][q])) * scratch.JxW_q[q];
 
+        // L's k-th column -- see the serial path for the reasoning.
+        if (assembleMacroCoupling)
+        {
+          scratch.macroCoupling_i[i] = 0;
+          for (const unsigned int q : fe_values.quadrature_point_indices())
+            scratch.macroCoupling_i[i] +=
+              (scratch.shapeGradSymm[i][q] * scratch.globalElasticTensor_q[q]) * scratch.JxW_q[q];
+          const Vector<double> kelvin =
+            Physics::Notation::Kelvin::to_vector(scratch.macroCoupling_i[i]);
+          for (unsigned int k = 0; k < nMacroDofs; ++k)
+            copy.cell_L(i, k) = kelvin[k];
+        }
+
         // Thermal load only -- no body force in this model (see the serial path).
         for (const unsigned int q : fe_values.quadrature_point_indices())
           copy.cell_rhs(i) +=
@@ -1533,10 +1677,14 @@ namespace StepCooling
       cell->get_dof_indices(copy.local_dof_indices);
     };
 
+    // Runs serialized by WorkStream, which is what makes writing the shared macroCouplingColumns
+    // safe here without any locking of our own.
     auto copier = [&](const AssemblyScratch::Copy &copy)
     {
       constraints.distribute_local_to_global(copy.cell_matrix, copy.cell_rhs,
                                              copy.local_dof_indices, system_matrix, system_rhs);
+      if (assembleMacroCoupling)
+        distributeMacroCouplingColumns(copy.cell_L, copy.local_dof_indices);
     };
 
     WorkStream::run(dof_handler.begin_active(), dof_handler.end(), worker, copier,
@@ -1545,20 +1693,52 @@ namespace StepCooling
   }
 
   template <int dim>
-  void ElasticProblem<dim>::solve()
+  void ElasticProblem<dim>::prepareLinearSolver()
+  {
+    TimerOutput::Scope timer_section(timer, "Linear solver setup");
+    directSolver.reset();
+    cgPreconditioner.reset();
+
+    if (prm.get({"SolverParameters"}, "LinearSolverType") == "direct")
+    {
+      directSolver = std::make_unique<SparseDirectUMFPACK>();
+      directSolver->initialize(system_matrix);
+    }
+    else
+    {
+      cgPreconditioner = std::make_unique<PreconditionSSOR<SparseMatrix<double>>>();
+      cgPreconditioner->initialize(
+        system_matrix, PreconditionSSOR<SparseMatrix<double>>::AdditionalData(1.2));
+    }
+  }
+
+  // One solve against the already-prepared matrix. Deliberately does NOT call
+  // constraints.distribute() -- the periodic path combines several raw solutions first and
+  // distributes afterwards.
+  template <int dim>
+  void ElasticProblem<dim>::solveLinearSystem(const Vector<double> &rhs, Vector<double> &dst)
   {
     TimerOutput::Scope timer_section(timer, "Solve system");
+
+    if (directSolver)
+    {
+      directSolver->vmult(dst, rhs);
+      lastCgIterations = 0;   // direct solve: no iteration count to report
+      return;
+    }
+
     const double linearSolverTolerance = prm.get_double({"SolverParameters"}, "LinearSolverTolerance");
     const unsigned int maxLinearIterations =
       prm.get_integer({"SolverParameters"}, "MaxLinearSolverIterations");
-    SolverControl            solver_control(maxLinearIterations,
-                                            linearSolverTolerance * system_rhs.l2_norm());
+    // An all-zero right-hand side would make a RELATIVE criterion demand a zero tolerance, which
+    // CG can never reach. The answer there is exactly zero. (This does occur: a unit-strain
+    // column of L can vanish for a symmetric enough microstructure.)
+    const double rhsNorm = rhs.l2_norm();
+    if (rhsNorm == 0.0) { dst = 0; lastCgIterations = 0; return; }
+
+    SolverControl solver_control(maxLinearIterations, linearSolverTolerance * rhsNorm);
     SolverCG<Vector<double>> cg(solver_control);
-
-    PreconditionSSOR<SparseMatrix<double>> preconditioner;
-    preconditioner.initialize(system_matrix, PreconditionSSOR<SparseMatrix<double>>::AdditionalData(1.2));
-
-    cg.solve(system_matrix,  solDisplacement, system_rhs, preconditioner);
+    cg.solve(system_matrix, dst, rhs, *cgPreconditioner);
 
     // A plain runtime check rather than Assert(): Assert() compiles to a no-op in Release
     // builds (-DNDEBUG), so relying on it here would mean a genuinely non-converged CG
@@ -1566,8 +1746,14 @@ namespace StepCooling
     if (solver_control.last_check() != SolverControl::success)
       throw std::runtime_error("CG solver did not converge (last residual " +
                                 std::to_string(solver_control.last_value()) + ")");
-
     lastCgIterations = solver_control.last_step();
+  }
+
+  template <int dim>
+  void ElasticProblem<dim>::solve()
+  {
+    prepareLinearSolver();
+    solveLinearSystem(system_rhs, solDisplacement);
     constraints.distribute(solDisplacement);
   }
 
@@ -1846,12 +2032,18 @@ namespace StepCooling
   // treatment or the minimal support is wrong. For "zeroDisplacement" it will be large and
   // triaxial, which is the whole reason that case is not free cooling.
   template <int dim>
-  SymmetricTensor<2, dim> ElasticProblem<dim>::computeAverageStress(double curTemperature) const
+  SymmetricTensor<2, dim> ElasticProblem<dim>::computeAverageStress(
+    double curTemperature,
+    const Vector<double> &displacementField,
+    const SymmetricTensor<2, dim> &macroStrain,
+    bool includeThermalStrain) const
   {
     const QGauss<dim> quadrature_formula(fe.degree + 1);
-    FEValues<dim> fe_values(fe, quadrature_formula,
-                            update_gradients | update_JxW_values);
+    FEValues<dim> fe_values(fe, quadrature_formula, update_gradients | update_JxW_values);
     std::vector<Tensor<2, dim>> gradients(quadrature_formula.size());
+
+    const double T0 = prm.get_double({"ModelParameters"}, "InitialTemperature");
+    const double deltaT = includeThermalStrain ? (curTemperature - T0) : 0.0;
 
     SymmetricTensor<2, dim> integratedStress;
     double volume = 0.0;
@@ -1859,22 +2051,22 @@ namespace StepCooling
     for (const auto &cell : dof_handler.active_cell_iterators())
     {
       fe_values.reinit(cell);
-      fe_values[displacement].get_function_gradients(solDisplacement, gradients);
+      fe_values[displacement].get_function_gradients(displacementField, gradients);
       const auto cell_damage = damageInQuadraturePoints.get_data(cell);
-      const Tensor<2, dim> rotGlobalToLocal =
-        rotmatOrientationCell[cell->material_id() - 1];
+      const Tensor<2, dim> rotGlobalToLocal = getRotTensorGlobalToLocal(cell->material_id());
       const Tensor<2, dim> rotLocalToGlobal = transpose(rotGlobalToLocal);
+      const SymmetricTensor<2, dim> localCte = cteTensor.getcteTensor(curTemperature);
 
       for (unsigned int q = 0; q < quadrature_formula.size(); ++q)
       {
+        // Total strain = macroscopic + fluctuation, per the u = Ebar.x + u~ split.
         const SymmetricTensor<2, dim> globalStrain =
-          dealii::symmetrize(gradients[q]) + macroscopicStrain;
+          dealii::symmetrize(gradients[q]) + macroStrain;
         const SymmetricTensor<2, dim> localStrain =
           Physics::Transformations::basis_transformation(globalStrain, rotGlobalToLocal);
-        const double T0 = prm.get_double({"ModelParameters"}, "InitialTemperature");
         const SymmetricTensor<2, dim> localStress =
           elasticityTensor.getElasticityTensor(cell_damage[q]->damage, curTemperature) *
-          (localStrain - cteTensor.getcteTensor(curTemperature) * (curTemperature - T0));
+          (localStrain - localCte * deltaT);
         integratedStress +=
           Physics::Transformations::basis_transformation(localStress, rotLocalToGlobal) *
           fe_values.JxW(q);
@@ -1884,62 +2076,126 @@ namespace StepCooling
     return integratedStress / volume;
   }
 
-  // --------------------------------------------------------------------------------------------
-  // NOT IMPLEMENTED. Fill in from homogenization.md section 6.
-  //
-  // Assembles, alongside the usual K and F_theta:
-  //
-  //   macroCouplingColumns[k]  =  L's k-th column  =  integral over Omega of B^T C I^(k) dV
-  //                               i.e. exactly the existing thermal-load assembly with the
-  //                               eigenstrain alpha*dT replaced by the unit Kelvin tensor I^(k).
-  //                               Distribute through the SAME constraints as the RHS, using
-  //                               constraints.distribute_local_to_global(cell_rhs, dofs, column).
-  //
-  //   macroStiffnessH          =  H  =  integral over Omega of C dV, a plain 6x6 volume integral
-  //                               of the rotated global C in Kelvin notation. NOT touched by
-  //                               constraints -- it involves no shape functions at all.
-  //
-  // Note the six columns are the eigenstrain path re-used six times, which is why splitting the
-  // thermal load out of the (i,j) loop above was worth doing.
-  // --------------------------------------------------------------------------------------------
+  // The state actually being carried by the solver.
   template <int dim>
-  void ElasticProblem<dim>::assemble_macroscopic_blocks(double /*curTemperature*/)
+  SymmetricTensor<2, dim>
+  ElasticProblem<dim>::computeAverageStress(double curTemperature) const
   {
-    throw std::runtime_error(
-      "assemble_macroscopic_blocks() is a template and not implemented yet -- see "
-      "homogenization.md section 6 for the blocks it must build.");
+    return computeAverageStress(curTemperature, solDisplacement, macroscopicStrain, true);
   }
 
-  // --------------------------------------------------------------------------------------------
-  // NOT IMPLEMENTED. Fill in from homogenization.md section 6, step by step:
+  // Scatters one cell's six L columns into the six global right-hand sides, through the SAME
+  // constraints as the ordinary RHS. That gives L_hat = P^T L, which is exactly what the solves
+  // in solve_with_zero_mean_stress() need.
   //
-  //   1. z = K^-1 F_theta                                     1 CG solve
-  //   2. Y_k = K^-1 macroCouplingColumns[k], k = 0..5         6 CG solves, SAME matrix and
-  //                                                           SAME preconditioner -- build the
-  //                                                           preconditioner once, outside.
-  //   3. homogenizedStiffness = H - L^T Y                     6x6, and it must come out
-  //                                                           SYMMETRIC and positive definite.
-  //                                                           Check it: that is a free and very
-  //                                                           sharp correctness test (section 4).
-  //   4. Ebar = homogenizedStiffness^-1 (P_theta - L^T z)     6x6 dense solve, e.g.
-  //                                                           FullMatrix::gauss_jordan()
-  //   5. U = z - Y Ebar                                       NO extra solve
-  //
-  // Then set macroscopicStrain from Ebar (Kelvin 6-vector -> SymmetricTensor via
-  // Physics::Notation::Kelvin::to_tensor) and solDisplacement from U.
-  //
-  // Validate with the uniform-orientation smoke test FIRST (homogenization.md section 9): give
-  // every grain the same orientation and the answer is known in closed form -- Cbar = C exactly,
-  // Ebar = alpha*dT, u_periodic identically 0, and sigma identically 0 pointwise. That single
-  // test exercises periodicity, the pin, the eigenstrain path, all seven solves and the recovery
-  // at once, against an answer that includes zero stress.
-  // --------------------------------------------------------------------------------------------
+  // Every constraint here is homogeneous -- periodicity relates fluctuation DoFs to each other
+  // with no offset, and the pin is u~ = 0 -- so the three-argument distribute_local_to_global is
+  // correct and no constraint matrix needs to be passed.
   template <int dim>
-  void ElasticProblem<dim>::solve_with_zero_mean_stress()
+  void ElasticProblem<dim>::distributeMacroCouplingColumns(
+    const FullMatrix<double> &cell_L,
+    const std::vector<types::global_dof_index> &local_dof_indices)
   {
-    throw std::runtime_error(
-      "solve_with_zero_mean_stress() is a template and not implemented yet -- see "
-      "homogenization.md section 6 for the 7-solve algorithm it must implement.");
+    Vector<double> column(local_dof_indices.size());
+    for (unsigned int k = 0; k < nMacroDofs; ++k)
+    {
+      for (unsigned int i = 0; i < local_dof_indices.size(); ++i)
+        column(i) = cell_L(i, k);
+      constraints.distribute_local_to_global(column, local_dof_indices,
+                                             macroCouplingColumns[k]);
+    }
+  }
+
+  // The 7-solve of homogenization.md section 6.
+  //
+  // With damage frozen (which the staggered scheme guarantees within one pass), the problem is
+  // LINEAR in (u~, Ebar), so this is exact rather than a linearization:
+  //
+  //     K U + L Ebar = F_theta          n equations
+  //     <sigma> = 0                     6 equations, the natural condition conjugate to Ebar
+  //
+  // Eliminating U costs one solve for the thermal load and six for L's columns -- all against
+  // the SAME matrix, hence one factorization (see prepareLinearSolver / LinearSolverType).
+  template <int dim>
+  void ElasticProblem<dim>::solve_with_zero_mean_stress(double curTemperature)
+  {
+    const unsigned int n = dof_handler.n_dofs();
+    prepareLinearSolver();
+
+    // --- 1. thermal solve: the fluctuation at Ebar = 0 -----------------------------------
+    Vector<double> U0(n);
+    solveLinearSystem(system_rhs, U0);
+    constraints.distribute(U0);
+
+    // --- 2. six unit-macroscopic-strain solves ------------------------------------------
+    // K U = F_theta - L Ebar, so the fluctuation belonging to Ebar = I^(k) is -Y_k. The minus
+    // sign is carried explicitly below rather than folded into Y, to keep Y meaning K^-1 L.
+    std::vector<Vector<double>> Y(nMacroDofs, Vector<double>(n));
+    for (unsigned int k = 0; k < nMacroDofs; ++k)
+    {
+      solveLinearSystem(macroCouplingColumns[k], Y[k]);
+      constraints.distribute(Y[k]);
+    }
+
+    // --- 3. Cbar, column by column, from the averaged stress ----------------------------
+    // Column k is <sigma> for the state (Ebar = I^(k), u~ = -Y_k) with NO thermal strain.
+    // I^(k) is the tensor whose Kelvin vector is the k-th unit vector -- for the shear entries
+    // that is the tensor with 1/sqrt(2) off-diagonal, which to_tensor() produces correctly. This
+    // is the one place the sqrt(2) convention could be got wrong by hand, so it is not done by
+    // hand.
+    FullMatrix<double> Cbar(nMacroDofs, nMacroDofs);
+    for (unsigned int k = 0; k < nMacroDofs; ++k)
+    {
+      Vector<double> unitKelvin(nMacroDofs);
+      unitKelvin[k] = 1.0;
+      SymmetricTensor<2, dim> unitStrain;
+      Physics::Notation::Kelvin::to_tensor(unitKelvin, unitStrain);
+
+      Vector<double> fluctuation(Y[k]);
+      fluctuation *= -1.0;
+
+      const SymmetricTensor<2, dim> columnStress =
+        computeAverageStress(curTemperature, fluctuation, unitStrain, /*includeThermal=*/false);
+      const Vector<double> columnKelvin = Physics::Notation::Kelvin::to_vector(columnStress);
+      for (unsigned int i = 0; i < nMacroDofs; ++i)
+        Cbar(i, k) = columnKelvin[i];
+    }
+    homogenizedStiffness = Cbar;
+
+    // Cbar must come out symmetric -- that follows from Hill-Mandel (section 4), NOT from how it
+    // was built, so it is a genuinely independent check on periodicity, the pin, the eigenstrain
+    // path and the seven solves all at once. Nothing above enforces it.
+    double asymmetry = 0.0, magnitude = 0.0;
+    for (unsigned int i = 0; i < nMacroDofs; ++i)
+      for (unsigned int j = 0; j < nMacroDofs; ++j)
+      {
+        asymmetry = std::max(asymmetry, std::abs(Cbar(i, j) - Cbar(j, i)));
+        magnitude = std::max(magnitude, std::abs(Cbar(i, j)));
+      }
+    lastCbarAsymmetry = (magnitude > 0.0) ? asymmetry / magnitude : 0.0;
+    if (lastCbarAsymmetry > 1e-6)
+      throw std::runtime_error(
+        "homogenized stiffness Cbar is not symmetric (relative asymmetry " +
+        std::to_string(lastCbarAsymmetry) + "). Hill-Mandel guarantees symmetry, so this means "
+        "the periodic constraints, the pin, or the L assembly is wrong -- not that the material "
+        "is unusual.");
+
+    // --- 4. Ebar = -Cbar^-1 : sigma_bar_theta -------------------------------------------
+    const SymmetricTensor<2, dim> sigmaTheta =
+      computeAverageStress(curTemperature, U0, SymmetricTensor<2, dim>(), /*includeThermal=*/true);
+    Vector<double> rhs6 = Physics::Notation::Kelvin::to_vector(sigmaTheta);
+    rhs6 *= -1.0;
+
+    FullMatrix<double> CbarInverse(Cbar);
+    CbarInverse.gauss_jordan();
+    Vector<double> Ebar(nMacroDofs);
+    CbarInverse.vmult(Ebar, rhs6);
+    Physics::Notation::Kelvin::to_tensor(Ebar, macroscopicStrain);
+
+    // --- 5. recombine: no extra solve ---------------------------------------------------
+    solDisplacement = U0;
+    for (unsigned int k = 0; k < nMacroDofs; ++k)
+      solDisplacement.add(-Ebar[k], Y[k]);
   }
 
   template <int dim>
@@ -2139,6 +2395,8 @@ namespace StepCooling
     elasticityTensor.setFromPrm(prm);
     cteTensor.setFromPrm(prm);
 
+    assembleMacroCoupling = (boundaryConditionType == BoundaryConditionType::periodic);
+
     std::cout << "Boundary conditions: " << boundaryConditionTypeName(boundaryConditionType)
               << std::endl;
     std::cout << "Threading: "
@@ -2174,8 +2432,12 @@ namespace StepCooling
     // a real bug in an earlier run: every cell had material_id 1, so all of them silently used
     // the mesh file's orientation at index 0 rather than the intended one.
     // --------------------------------------------------------------------------------------
+    const bool uniformOrientation = prm.get_bool({"BoundaryConditions"}, "UniformOrientation");
     const unsigned int orientationSeed =
       prm.get_integer({"BoundaryConditions"}, "OrientationSeed");
+    if (uniformOrientation)
+      std::cout << "*** UniformOrientation smoke test: every grain identically oriented. "
+                   "Expect Cbar = C, u~ = 0, sigma = 0 pointwise. ***" << std::endl;
     std::mt19937_64 rng(orientationSeed);
 
     rotmatOrientationCell.clear();
@@ -2184,7 +2446,9 @@ namespace StepCooling
     for (const auto &cell : triangulation.active_cell_iterators())
     {
       cell->set_material_id(++cellCounter); // 1-based by the convention above
-      rotmatOrientationCell.push_back(randomOrientationUniformOnSphere<dim>(rng));
+      rotmatOrientationCell.push_back(
+        uniformOrientation ? Tensor<2, dim>(unit_symmetric_tensor<dim>())
+                           : randomOrientationUniformOnSphere<dim>(rng));
     }
 
     // types::material_id is a build-time typedef (unsigned int in this deal.II build, but
@@ -2353,7 +2617,10 @@ namespace StepCooling
       dispDamageIterationNumber++;
 
       assemble_system(curT);
-      solve();
+      if (boundaryConditionType == BoundaryConditionType::periodic)
+        solve_with_zero_mean_stress(curT);
+      else
+        solve();
       predict_damage_tempInc_external_solver(curT, dT);
       process_solution(refinementCycle, temperatureStepNumber, dispDamageIterationNumber, curT);
 
@@ -2426,7 +2693,20 @@ namespace StepCooling
 
     assemble_system(curT);
     Vector<double> systemResidual(system_matrix.m());
+    // residual() returns system_rhs - K U, i.e. F_theta - K U.
     system_matrix.residual(systemResidual, solDisplacement, system_rhs);
+    // The periodic system's equilibrium row is K U + L Ebar = F_theta, so the L Ebar term has to
+    // come off too. Without it the residual is dominated by the macroscopic load and never falls
+    // below tolerance no matter how exactly the system was solved -- which is exactly what the
+    // first periodic run did (relResidual stuck at 0.9 while the smoke test was otherwise
+    // pointwise exact).
+    if (boundaryConditionType == BoundaryConditionType::periodic)
+    {
+      const Vector<double> EbarKelvin =
+        Physics::Notation::Kelvin::to_vector(macroscopicStrain);
+      for (unsigned int k = 0; k < nMacroDofs; ++k)
+        systemResidual.add(-EbarKelvin[k], macroCouplingColumns[k]);
+    }
     // Constrained-DOF rows carry a placeholder diagonal that distribute_local_to_global()
     // writes purely to keep the matrix well-conditioned for the preconditioner -- with no
     // matching right-hand-side entry, since those rows are never meant to be interpreted as
@@ -2529,6 +2809,22 @@ namespace StepCooling
               << "   damage: mean=" << meanDamage << ", max=" << maxDamage << std::endl
               << "   <sigma> norm=" << meanStress.norm()
               << " (trace/3 = " << trace(meanStress) / dim << ")" << std::endl;
+    if (boundaryConditionType == BoundaryConditionType::periodic)
+    {
+      // Ebar and the effective CTE are results, not diagnostics: alphaBar is the homogenized
+      // thermal expansion of the polycrystal, which falls out of this formulation for free.
+      const double dT = curT - prm.get_double({"ModelParameters"}, "InitialTemperature");
+      std::cout << "   Ebar (diag) = " << macroscopicStrain[0][0] << ", "
+                << macroscopicStrain[1][1] << ", " << macroscopicStrain[2][2]
+                << "   alphaBar (diag) = ";
+      if (dT != 0.0)
+        std::cout << macroscopicStrain[0][0]/dT << ", " << macroscopicStrain[1][1]/dT
+                  << ", " << macroscopicStrain[2][2]/dT;
+      std::cout << "\n   Cbar diag (GPa) = ";
+      for (unsigned int i = 0; i < nMacroDofs; ++i)
+        std::cout << homogenizedStiffness(i, i) / 1e9 << " ";
+      std::cout << "  (rel. asymmetry " << lastCbarAsymmetry << ")" << std::endl;
+    }
 
     convergence_table.add_value("cycle", refinementCycle);
     convergence_table.add_value("tempStep", tempStepNum);

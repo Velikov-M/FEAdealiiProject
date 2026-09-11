@@ -4,12 +4,12 @@ Cooling of a periodic RVE of randomly oriented graphite domains. Thermal-expansi
 between misoriented anisotropic grains is the classic microcracking mechanism in polycrystalline
 graphite, so cooling alone produces a non-trivial stress field with no applied load at all.
 
-**Status: running, on the two simpler boundary conditions.** The MMS machinery is gone, the damage
+**Status: all three boundary conditions running, periodic included.** The MMS machinery is gone, the damage
 solver from `../uniaxialDamageTest/` is in, grains carry random c-axis orientations, and both
 `zeroDisplacement` and `freeSurface` run end to end in ~2 s for 10 cooling steps at 1 element/grain.
-The periodic formulation is not implemented: `applyBoundaryConstraints()`,
-`assemble_macroscopic_blocks()` and `solve_with_zero_mean_stress()` carry templates for it and throw
-if selected. See `homogenization.md` for the derivation they must implement.
+The periodic formulation (`u = Ebar.x + u_periodic` with `Ebar` fixed by `<sigma> = 0`) is
+implemented and validated -- see `homogenization.md` for the derivation and **Validating the
+periodic formulation** below for what was checked.
 
 ## Running it
 
@@ -44,7 +44,7 @@ digit, and that is worth re-checking after any assembly change.
 |---|---|---|---|
 | `zeroDisplacement` | `u = 0` on the whole boundary | ~4.6e8 Pa at `dT = -200 K` | 19 |
 | `freeSurface` | traction-free + minimal 3-2-1 support | ~0.02 Pa (i.e. zero) | 174 |
-| `periodic` | `u = Ebar.x + u_per`, `<sigma>=0` | 0 by construction | not implemented |
+| `periodic` | `u = Ebar.x + u_per`, `<sigma>=0` | ~6e-8 Pa (i.e. zero) | 47 |
 
 `zeroDisplacement` is a machinery test, not physics: clamping forbids macroscopic contraction, so
 it develops a uniform triaxial tension of tens of MPa. That is visible in the run — the tension
@@ -58,7 +58,62 @@ just a diagnostic.** What it is not is a *periodic* state — boundary grains re
 free surface, so there is a surface layer with no RVE character.
 
 The measured cost of the floppy support is a 9x jump in CG iterations (19 -> 174), the "floppy BC"
-regime already seen in `../uniaxialDamageTest/`. Solve time goes from 2% to 32% of the run.
+regime already seen in `../uniaxialDamageTest/`. Periodicity brings it back down to 47: there are no
+free surfaces and no 3-point pinning, only a single translation-fixing pin.
+
+`periodic` is the one to draw physics from. It costs seven solves per assembly, but they all share
+one matrix, and it hands back the homogenized stiffness `Cbar` and effective CTE `alphaBar` for
+free.
+
+### Validating the periodic formulation
+
+`BoundaryConditions/UniformOrientation = true` gives every grain the same orientation, making the
+RVE a single crystal, for which the answer is known in closed form. All five predictions hold:
+
+| prediction | measured |
+|---|---|
+| `Cbar = C` exactly | `1060, 1060, 36.5, 0.25, 0.25, 440` GPa = the input `C11, C11, C33, C44, C44, C66` |
+| `alphaBar = alpha` | `1e-06, 1e-06, 2.7e-05` = the input `alpha11, alpha11, alpha33` |
+| `Ebar = alpha*dT` | `-2e-05, -2e-05, -5.4e-04` at `dT = -20 K` |
+| `sigma = 0` **pointwise** | `sigma_33` in `[-2.8e-07, 2.9e-07]` Pa, against moduli of 1e12 -- 1e-19 relative |
+| `Cbar` symmetric | relative asymmetry `8e-32` |
+
+One switch therefore exercises periodicity, the pin, the eigenstrain path, all seven solves and the
+recovery at once -- against an answer that includes **zero stress**, which is the strongest form the
+check can take. Run it after any change to this machinery.
+
+`Cbar` symmetry is worth keeping as a standing check even on production runs: it follows from
+Hill-Mandel, *not* from how `Cbar` is built, so nothing in the code enforces it. It is asserted at
+1e-6 relative and reported every step.
+
+### On the solver: seven right-hand sides, one matrix
+
+The periodic path solves seven systems that differ only in the right-hand side, so the setup cost is
+worth amortizing. `SolverParameters/LinearSolverType` picks how:
+
+| | setup per assembly | 7 solves | `Cbar` asymmetry |
+|---|---|---|---|
+| `direct` (UMFPACK) | 0.10 s | 0.083 s | 8e-32 |
+| `cg` (SSOR, preconditioner reused) | 0.00006 s | 0.083 s | 1e-10 |
+
+At 3993 DoFs the per-solve cost is the same and the factorization is pure overhead, so **`cg` is the
+default**. Use `direct` when validating changes to the periodic machinery: it is exact, and a solver
+tolerance has already masked a coupling check once in this project.
+
+Neither actually *shares work between the right-hand sides* -- UMFPACK reuses the factorization and
+CG reuses the preconditioner, but each CG solve still builds its own Krylov space from scratch. The
+method that would exploit it properly is block CG (one Krylov space for all seven RHS), which
+deal.II does not provide; Trilinos Belos does, so it belongs with the Trilinos rewrite in step 5.
+
+### A first physical result
+
+With random orientations the effective CTE comes out at **`alphaBar ~ 2.2e-06`**, far below the
+naive orientation average of `(2*alpha_a + alpha_c)/3 ~ 9.7e-06`. That is not a bug: the stiff basal
+directions (`C11 = 1060 GPa`, `alpha_a ~ 1e-6`) dominate the average, while the compliant c-axis
+(`C33 = 36.5 GPa`, `alpha_c = 27e-6`) expands a lot but carries little load. The value sits just
+above the Voigt estimate (~1.7e-6) and far below the Reuss one (9.7e-6), which is where it should
+be. `Cbar` correspondingly collapses from the wildly anisotropic single crystal to something nearly
+isotropic (`384, 364, 348` GPa on the normal diagonal).
 
 ### Macroscopic strain: free cooling, `<sigma> = 0`
 

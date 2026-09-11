@@ -269,6 +269,13 @@
    "default_value": "1000",
    "documentation": "Iteration cap for the CG linear solve.",
    "pattern_description": "[Integer range 1...2147483647 (inclusive)]"
+  },
+  "LinearSolverType": {
+   "value": "cg",
+   "default_value": "cg",
+   "documentation": "direct|cg",
+   "pattern": "35",
+   "pattern_description": "[Selection direct|cg ]"
   }
  },
  "ParallelizationParameters": {
@@ -287,7 +294,7 @@
  },
  "BoundaryConditions": {
   "Type": {
-   "value": "freeSurface",
+   "value": "periodic",
    "default_value": "zeroDisplacement",
    "documentation": "zeroDisplacement | freeSurface | periodic. Start with zeroDisplacement to exercise the grain machinery, then freeSurface for a real <sigma>=0 free-cooling state. periodic is not implemented yet.",
    "pattern": "31",
@@ -299,6 +306,13 @@
    "documentation": "Seed for per-grain random c-axis orientations. RECORD THIS with any result.",
    "pattern": "32",
    "pattern_description": "[Integer range 0...2147483647 (inclusive)]"
+  },
+  "UniformOrientation": {
+   "value": "false",
+   "default_value": "false",
+   "documentation": "Smoke test: all grains identically oriented.",
+   "pattern": "34",
+   "pattern_description": "[Bool]"
   }
  }
 }
