@@ -120,9 +120,9 @@
   },
   "ThermoElasticParameters": {
    "alpha11_0": {
-    "value": "1e-6",
+    "value": "1.2e-6",
     "default_value": "1e-5",
-    "documentation": "PLACEHOLDER pending the user's reference source. Basal-plane CTE.",
+    "documentation": "Basal-plane CTE alpha_a. Read from the Steward et al. curve at 1800-2000 K, where it plateaus at ~1.2e-6. FROM A FIGURE, not from source data.",
     "pattern": "16",
     "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
    },
@@ -134,9 +134,9 @@
     "pattern_description": "[Anything]"
    },
    "alpha33_0": {
-    "value": "27e-6",
+    "value": "32e-6",
     "default_value": "1e-8",
-    "documentation": "PLACEHOLDER pending the user's reference source. c-axis CTE.",
+    "documentation": "c-axis CTE alpha_c. Read from the Steward et al. curve at 1800-2000 K (~32e-6). The previous 27e-6 corresponded to ~600 K on that same curve. FROM A FIGURE, not from source data.",
     "pattern": "18",
     "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
    },
@@ -161,6 +161,13 @@
   },
   "FractionToCoarsen": {
    "value": "0.03"
+  },
+  "InitialGlobalRefinements": {
+   "value": "1",
+   "default_value": "0",
+   "documentation": "Uniform refinements applied once after reading the mesh: 0->1, 1->8, 2->64 elements per grain.",
+   "pattern": "39",
+   "pattern_description": "[Integer range 0...2147483647 (inclusive)]"
   }
  },
  "ModelParameters": {
@@ -194,21 +201,21 @@
  },
  "OutputParameters": {
   "OutputDirectory": {
-   "value": "output",
+   "value": "/home/dealii/myWork/coolingModelRevision/resolvedGrainCooling/results/bc-resolution-sweep/zeroDisplacement_08cpg_seed20260905",
    "default_value": "output",
    "documentation": "Directory to store output files",
    "pattern": "25",
    "pattern_description": "[DirectoryName]"
   },
   "OutputFileNamePrefix": {
-   "value": "solution",
+   "value": "zeroDisplacement_08cpg_seed20260905",
    "default_value": "solution",
    "documentation": "Prefix for output file names",
    "pattern": "26",
    "pattern_description": "[Anything]"
   },
   "OutputFrequency": {
-   "value": "100",
+   "value": "1",
    "default_value": "10",
    "documentation": "Frequency of output (in terms of number of steps)",
    "pattern": "27",
@@ -290,6 +297,13 @@
    "documentation": "none|aitken",
    "pattern": "38",
    "pattern_description": "[Selection none|aitken ]"
+  },
+  "DamageWarningThreshold": {
+   "value": "0.9",
+   "default_value": "0.9",
+   "documentation": "Warn once when max damage exceeds this.",
+   "pattern": "40",
+   "pattern_description": "[Double 0...1 (inclusive)]"
   }
  },
  "ParallelizationParameters": {
@@ -308,7 +322,7 @@
  },
  "BoundaryConditions": {
   "Type": {
-   "value": "periodic",
+   "value": "zeroDisplacement",
    "default_value": "zeroDisplacement",
    "documentation": "zeroDisplacement | freeSurface | periodic. Start with zeroDisplacement to exercise the grain machinery, then freeSurface for a real <sigma>=0 free-cooling state. periodic is not implemented yet.",
    "pattern": "31",

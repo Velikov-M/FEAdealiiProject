@@ -1,0 +1,6 @@
+# Field dumps are large (a 64-elements/grain run is ~85 MB for ten steps) and are fully
+# regenerable from the input.json committed alongside them. What IS kept is everything needed to
+# reproduce or re-analyse a run without re-running it: the exact configuration, the console log,
+# and the per-step macroscopic history.
+*.vtu
+*.pvd

@@ -121,6 +121,7 @@
 #include <deal.II/physics/notation.h>
 
 #include <fstream>
+#include <filesystem>
 #include <sstream>
 #include <iostream>
 #include <cmath>
@@ -553,6 +554,17 @@ namespace StepCooling
                         "against ONE matrix, so that cost is amortized roughly sevenfold -- this "
                         "formulation suits AMG better than a single-solve code would.");
 
+      prm.declare_entry("DamageWarningThreshold",
+                        "0.9",
+                        Patterns::Double(0, 1),
+                        "Warn once per run when the maximum damage anywhere exceeds this. The "
+                        "kinetic law carries a (1-omega)^-m term and the root search brackets at "
+                        "omega = 0.999, so as damage approaches 1 the equation stiffens sharply "
+                        "and the bracket narrows: results past this point are not trustworthy "
+                        "even when the solver still converges. This is a loud warning, not a "
+                        "stop, because a few quadrature points reaching it does not invalidate "
+                        "the rest of the field.");
+
       prm.declare_entry("CouplingAcceleration",
                         "none",
                         Patterns::Selection("none|aitken"),
@@ -601,6 +613,17 @@ namespace StepCooling
     prm.leave_subsection();
     prm.enter_subsection("MeshRefinementParameters");
     {
+      prm.declare_entry("InitialGlobalRefinements",
+                        "0",
+                        Patterns::Integer(0),
+                        "Uniform refinements applied ONCE after reading the mesh, before anything "
+                        "else. With GrainsPerSide matching the base mesh this sets the grain "
+                        "resolution directly: 0 -> 1 element per grain, 1 -> 8, 2 -> 64. Prefer "
+                        "this over NumberOfRefinementCycles for a sweep: cycles re-run the whole "
+                        "temperature range per cycle and write all of them into one output series "
+                        "with repeating time values, which makes a .pvd that ParaView cannot "
+                        "order.");
+
       prm.declare_entry("NumberOfRefinementCycles",
                         "1",
                         Patterns::Integer(1),
@@ -1035,7 +1058,8 @@ namespace StepCooling
     std::unique_ptr<TrilinosWrappers::SparseMatrix> trilinosMatrix;
     std::unique_ptr<TrilinosWrappers::PreconditionAMG> amgPreconditioner;
     mutable unsigned int lastCgIterations = 0;
-    double lastCbarAsymmetry = 0.0;   // relative asymmetry of Cbar; see solve_with_zero_mean_stress
+    double lastCbarAsymmetry = 0.0;
+    bool damageCeilingWarned = false;   // warn once per run, not once per step   // relative asymmetry of Cbar; see solve_with_zero_mean_stress
     // output_results() is const and needs the current temperature to re-evaluate stress; the
     // temperature-step loop records it here rather than threading it through the signature.
     double lastProcessedTemperature = 0.0;
@@ -1274,6 +1298,11 @@ namespace StepCooling
     };
     std::vector<MacroscopicRecord> macroscopicHistory;
     void writeMacroscopicHistory(const std::string &fileName) const;
+
+    // <OutputDirectory>/<OutputFileNamePrefix><suffix>, creating the directory if needed. Both
+    // parameters were declared but never consulted before; wiring them is what lets a sweep put
+    // each run's files somewhere of its own instead of overwriting a shared name.
+    std::string outputPath(const std::string &suffix) const;
 
     // (pseudo-time, filename) pairs for the ParaView .pvd time series written at the end of
     // run(). The time value is the accumulated cooling s = T_0 - T, which INCREASES over the run
@@ -2474,6 +2503,17 @@ namespace StepCooling
   }
 
   template <int dim>
+  std::string ElasticProblem<dim>::outputPath(const std::string &suffix) const
+  {
+    const std::string dir = prm.get({"OutputParameters"}, "OutputDirectory");
+    const std::string prefix = prm.get({"OutputParameters"}, "OutputFileNamePrefix");
+    if (dir.empty() || dir == ".")
+      return prefix + suffix;
+    std::filesystem::create_directories(dir);
+    return (std::filesystem::path(dir) / (prefix + suffix)).string();
+  }
+
+  template <int dim>
   void ElasticProblem<dim>::writeMacroscopicHistory(const std::string &fileName) const
   {
     if (macroscopicHistory.empty())
@@ -2698,12 +2738,14 @@ namespace StepCooling
 
     data_out.build_patches();
 
-    const std::string fileName = "polycrystalCooling-" + std::to_string(cycle) + ".vtu";
+    const std::string fileName = outputPath("-" + std::to_string(cycle) + ".vtu");
     std::ofstream output(fileName);
     data_out.write_vtu(output);
 
-    // Accumulated cooling, which increases over the run -- see pvdTimeSeries.
-    pvdTimeSeries.emplace_back(T0 - curT, fileName);
+    // The .pvd resolves dataset paths RELATIVE to itself, and both sit in the same directory,
+    // so the record must carry the bare filename, not the path used to open the stream.
+    pvdTimeSeries.emplace_back(T0 - curT,
+                               std::filesystem::path(fileName).filename().string());
   }
 
   template <int dim>
@@ -2768,6 +2810,13 @@ namespace StepCooling
     const bool uniformOrientation = prm.get_bool({"BoundaryConditions"}, "UniformOrientation");
     const unsigned int orientationSeed =
       prm.get_integer({"BoundaryConditions"}, "OrientationSeed");
+    // Refine BEFORE assigning grains: assignGrains() works off cell centroids, so it lands the
+    // right grain on every child automatically and the grain count is unaffected.
+    const unsigned int initialRefinements =
+      prm.get_integer({"MeshRefinementParameters"}, "InitialGlobalRefinements");
+    if (initialRefinements > 0)
+      triangulation.refine_global(initialRefinements);
+
     grainsPerSide = prm.get_integer({"BoundaryConditions"}, "GrainsPerSide");
     const unsigned int nGrains = grainsPerSide * grainsPerSide * grainsPerSide;
     if (uniformOrientation)
@@ -2914,11 +2963,11 @@ namespace StepCooling
     // opens ONE entry, scrubs through the cooling history, and shows accumulated cooling in K on
     // the animation clock -- which is what makes "stress builds up, then damage grows" legible
     // as a sequence rather than as ten separate pictures.
-    writeMacroscopicHistory("macroscopic_history.csv");
+    writeMacroscopicHistory(outputPath("_macroscopic_history.csv"));
 
     if (!pvdTimeSeries.empty())
     {
-      std::ofstream pvd("polycrystalCooling.pvd");
+      std::ofstream pvd(outputPath(".pvd"));
       DataOutBase::write_pvd_record(pvd, pvdTimeSeries);
       std::cout << "Wrote ParaView time series polycrystalCooling.pvd ("
                 << pvdTimeSeries.size() << " steps). Open THIS, not the individual .vtu files."
@@ -3254,6 +3303,26 @@ namespace StepCooling
     meanDamage /= damageWeight;
     const double tensionFraction   = tensionVolume / totalVolume;
     const double thresholdFraction = overThresholdVolume / totalVolume;
+
+    // Damage approaching 1 is where the kinetic law stops being trustworthy: the (1-omega)^-m
+    // term stiffens sharply and the root bracket [old_damage, 0.999] narrows towards nothing.
+    // Warn loudly ONCE rather than per step, and do not stop -- a handful of quadrature points at
+    // the ceiling does not invalidate the rest of the field, but it does mean the peak values
+    // should not be quoted.
+    const double damageWarningThreshold =
+      prm.get_double({"SolverParameters"}, "DamageWarningThreshold");
+    if (maxDamage > damageWarningThreshold && !damageCeilingWarned)
+    {
+      damageCeilingWarned = true;
+      std::cout << "\n*** WARNING: maximum damage " << maxDamage << " exceeded "
+                << damageWarningThreshold << " at temperature step " << tempStepNum
+                << " (T = " << curT << ").\n"
+                << "    The kinetic law's (1-omega)^-m term is stiff here and the root search\n"
+                << "    brackets at 0.999, so peak damage values past this point are not\n"
+                << "    trustworthy even where the solver reports convergence. Consider a\n"
+                << "    smaller temperature step, or treat this run as reaching its validity\n"
+                << "    limit. ***\n" << std::endl;
+    }
 
     // <sigma>: identically zero for a genuinely free-cooling state (traction-free boundaries
     // give it by the average stress theorem), and large and triaxial for the clamped case. So
