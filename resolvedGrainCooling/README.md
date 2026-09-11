@@ -84,7 +84,10 @@ exactly at every level:
 |---|---|---|---|
 | 1 000 | 1 | `1060 1060 36.5 0.25 0.25 440` | 1.1e-31 |
 | 8 000 | 8 | `1060 1060 36.5 0.25 0.25 440` | 2.3e-31 |
-| 64 000 | 64 | *(run pending)* | |
+| 64 000 | 64 | `1060 1060 36.5 0.25 0.25 440` | 1.5e-30 |
 
 `Cbar = C` exactly is the single-crystal prediction, so this checks the periodic machinery, the
-grain assignment and its survival of refinement all at once.
+grain assignment and its survival of refinement all at once. `alphaBar` comes out at
+`1e-06, 1e-06, 2.7e-05` (the input crystal CTE) and `Ebar` at `alpha*dT` at every level too, and
+the pointwise stress stays at the 1e-6 Pa level against moduli of 1e12 -- so `sigma = 0` holds to
+~1e-18 relative even on 64 000 cells, where the condensation runs seven solves over 195 k DoFs.
