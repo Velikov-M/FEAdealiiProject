@@ -43,14 +43,56 @@ Socket(s): 1        NUMA node(s): 1     L3: 32 MiB     RAM: 15 GiB
 
 ### Measured cell-count scaling
 
+Two things grow with the mesh, and both have to be counted.
+
+**Inner: CG iterations per solve.**
+
 | cells | DoFs | CG+SSOR iterations |
 |---|---|---|
 | 1 000 | 3 993 | 47 |
 | 8 000 | 27 783 | 138 |
 | 64 000 | 206 763 | 321 |
 
-`iterations ~ N^0.487`, so **solve cost ~ N^1.49**. Projected wall time for 10 cooling steps:
-~1.5 min at 8 elements/grain, ~29 min at 64, and ~10 h at 512.
+`~ N^0.487`.
+
+**Outer: fixed-point iterations per temperature step** (10 steps of 20 K, so a realistic step size):
+
+| cells | iterations/step | max |
+|---|---|---|
+| 1 000 | 2.10 | 3 |
+| 8 000 | 3.10 | 7 |
+
+`~ N^0.201`. Confirmed against the solve count exactly: 21 + 31 solve-sets = 364 solves.
+
+Each temperature step costs `(fixed-point iterations) x 7 solves x (CG iterations)`, so
+
+> **solve cost ~ N^(1 + 0.487 + 0.201) = N^1.69**
+
+Projected wall time for 10 cooling steps, anchored on the measured 65 s at 8 000 cells:
+**~1 min** at 8 elements/grain, **~32 min** at 64, **~17 h** at 512.
+
+At 64 000 cells the solve is **92% of wall time** (measured: 1 500 s of 1 640 s), up from 73% at
+8 000. It gets worse, not better, with size.
+
+### A note on the convergence criterion
+
+Of the three criteria, `maxDamageInc` is the one that binds; the other two pass by two to three
+orders of magnitude. At 8 000 cells the final check reads
+
+```
+relSolInc   = 1.79e-07  (tol 1e-05)   passes by 56x
+maxDamageInc= 3.17e-06  (tol 1e-05)   passes by 3x     <-- binding
+relResidual = 9.76e-08  (tol 1e-04)   passes by 1000x
+```
+
+It is a **max-norm over all quadrature points against a fixed absolute tolerance**, so refining adds
+samples to the max and makes it harder to satisfy. The code's defence of the choice is sound (damage
+is self-limited to [0,1], so an absolute max-norm is physically meaningful) but the side effect is
+the `N^0.201` growth above, part of which is a criterion artefact rather than physics.
+
+The effect is mild at a realistic step size. It is NOT mild at a large one: a single 200 K step at
+64 000 cells took **28** fixed-point iterations, against 3.1 for ten 20 K steps. So the outer loop
+degrades sharply with step size, and step-size choice is itself a performance lever.
 
 ---
 
@@ -109,8 +151,8 @@ from better data locality and from removing TBB overhead, not 6x.
 **On a cluster: near-linear in nodes**, because every node brings its own memory system. This is the
 *only* option that goes past one machine, and it is the reason it sits in the plan at all.
 
-It does **not** change the exponent: cost stays `~N^1.49`, with a smaller constant and more hardware
-to spend. 4 nodes turns the 10 h case into ~2.5 h; it does not turn it into 15 minutes.
+It does **not** change the exponent: cost stays `~N^1.69`, with a smaller constant and more hardware
+to spend. 4 nodes turns the 17 h case into ~4 h; it does not turn it into 15 minutes.
 
 ### What gets rewritten
 
@@ -171,9 +213,10 @@ growth with `O(1)`:
 |---|---|---|---|
 | 8 000 | 27 783 | 138 | ~10 |
 | 64 000 | 206 763 | 321 | ~10 |
-| 512 000 | ~1.6 M | ~750 | ~10 |
+| 512 000 | ~1.6 M | ~870 | ~10 |
 
-**That changes the exponent, from `~N^1.49` to `~N^1.0`.** No amount of MPI does that. It is also by
+**That changes the exponent, from `~N^1.69` to `~N^1.2`** (the residual `N^0.2` being the outer
+fixed-point loop, which multigrid does not touch). No amount of MPI does that. It is also by
 far the largest project here.
 
 ### What gets rewritten
@@ -217,12 +260,15 @@ Net: the *constitutive* code gets clearer, the *data layout* code gets considera
 
 1. **Do section 1 first.** 4.4x from caching `Cbar`, ~2x on assembly from not assembling twice, plus
    the rank-one rotation. That is days of work against the same bottleneck, and it makes 64
-   elements/grain (~29 min today) land near 7 minutes — inside the 15-minute wall, with no rewrite.
+   elements/grain (~32 min today) land near 7 minutes — inside the 15-minute wall, with no rewrite.
 2. **Then re-measure.** The bottleneck may well have moved; committing to a rewrite against a
    measurement that is three optimisations out of date would be a mistake.
 3. **MPI when the target is a cluster, not before.** On this single-socket machine it buys ~1.5x. It
    is an enabler for different hardware, not a speedup on this one.
-4. **Matrix-free + geometric multigrid is the only option that changes the exponent**, and it is the
+4. **Fix the outer loop too.** Multigrid attacks the inner `N^0.487`; the outer `N^0.201` is
+   untouched by either rewrite. A mesh-robust damage criterion, or Anderson/Aitken acceleration of
+   a fixed point converging linearly at rate ~0.81, is cheap and independent of both options.
+5. **Matrix-free + geometric multigrid is the only option that changes the inner exponent**, and it is the
    right end state for 512 000 cells and beyond. It is also the biggest project, it deletes all three
    current preconditioner options, and at Q1 its raw product is slower than what we have. Treat it as
    the destination, not the next step.

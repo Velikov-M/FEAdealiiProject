@@ -151,7 +151,7 @@
  },
  "MeshRefinementParameters": {
   "NumberOfRefinementCycles": {
-   "value": "3"
+   "value": "2"
   },
   "RefinementStrategy": {
    "value": "uniform"
@@ -179,7 +179,7 @@
    "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
   },
   "TemperatureIncrement": {
-   "value": "200",
+   "value": "20",
    "default_value": "100",
    "documentation": "Temperature increment for each step",
    "pattern": "1",
