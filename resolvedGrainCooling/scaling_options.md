@@ -135,7 +135,49 @@ although the rotation is identical for all eight points of a cell and only `omeg
 basis transformation is the dominant per-point cost. Rotate `C_global(0)` once per cell, then apply
 the rank-one correction per point.
 
-**Combined, 1a-1c attack the same 75% that the rewrites target, and cost days rather than months.**
+### MEASURED OUTCOMES (1b, 1c and acceleration implemented 2026-09-11)
+
+| change | effect | verdict |
+|---|---|---|
+| 1c rank-one rotation + per-grain cache | assembly ~3% faster | **much smaller than predicted** |
+| 1b one assembly per iteration | 42 -> 31 assemblies | small; assembly is only 12% of runtime |
+| Aitken relaxation of the fixed point | 72.1 s -> 65 s, 364 -> 329 solves | **10%, and it grows with mesh** |
+| 1a cache `Cbar` + the six `Y_k` | *not yet implemented* | projected **4.4x** |
+
+**I was wrong about where assembly time goes.** The rank-4 basis transformation is ~52k ops per
+cell, while the `i,j,q` contraction loop is ~400k -- so the rotation was never dominant, and
+removing it from the quadrature loop bought ~3% rather than the substantial win implied above. The
+change is still correct and will matter more at Q2 or with more quadrature points, but it is not a
+lever. Same for 1b: assembly is 12% of runtime, so a 26% cut there is ~3% overall.
+
+**Aitken behaves as the theory predicts**, including the part that matters most -- the benefit grows
+with mesh size, which is the direction that needs it:
+
+| cells | plain substitution | Aitken |
+|---|---|---|
+| 1 000 | 2.10 iterations/step | 2.10 (no change) |
+| 8 000 | 3.10 iterations/step | **2.60** |
+
+At 1000 cells the loop converges in 2.1 passes, so there are rarely two residuals to extrapolate
+from and Aitken cannot engage. It only starts paying once the loop is long enough to have a history.
+
+**The solution is unchanged** -- the essential check, since acceleration must alter the path and not
+the fixed point:
+
+```
+                 plain substitution        Aitken
+damage mean      6.90199e-05               6.90198e-05
+damage max       0.221759                  0.22176
+sigma_33 range   2.68821e7 .. 2.06224e8    identical
+Ebar (diag)      -5.47002e-4 ...           identical
+Cbar diag        266.745 251.291 ...       identical
+```
+
+Differences appear only in the sixth digit of the damage summary, i.e. at the 1e-5 convergence
+tolerance, exactly as they should.
+
+**So the real remaining lever in this section is 1a, which is still unimplemented and is worth an
+order of magnitude more than the two that are.**
 
 ---
 

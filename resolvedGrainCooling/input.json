@@ -151,7 +151,7 @@
  },
  "MeshRefinementParameters": {
   "NumberOfRefinementCycles": {
-   "value": "2"
+   "value": "1"
   },
   "RefinementStrategy": {
    "value": "uniform"
@@ -283,6 +283,13 @@
    "documentation": "AMG smoother sweeps",
    "pattern": "36",
    "pattern_description": "[Integer range 1...2147483647 (inclusive)]"
+  },
+  "CouplingAcceleration": {
+   "value": "aitken",
+   "default_value": "none",
+   "documentation": "none|aitken",
+   "pattern": "38",
+   "pattern_description": "[Selection none|aitken ]"
   }
  },
  "ParallelizationParameters": {
