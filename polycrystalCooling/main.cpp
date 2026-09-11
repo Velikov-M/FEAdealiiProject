@@ -906,6 +906,46 @@ namespace StepCooling
     const std::vector<Tensor<2, dim>> &orientations;
   };
 
+  // Total displacement u = Ebar.x + u~, for the periodic formulation.
+  //
+  // WHY THIS EXISTS: solve_with_zero_mean_stress() leaves only the FLUCTUATION u~ in
+  // solDisplacement, with Ebar held separately -- that is the whole point of the split. So the
+  // plain `displacement` array is the fluctuation, and warping by it shows a periodic wiggle with
+  // no macroscopic contraction at all: the RVE would not appear to shrink on cooling. This adds
+  // the Ebar.x part back so "Warp By Vector" shows the RVE as it actually deforms.
+  //
+  // For the non-periodic families Ebar is identically zero and this equals `displacement`.
+  template <int dim>
+  class TotalDisplacementPostprocessor : public DataPostprocessorVector<dim>
+  {
+  public:
+    TotalDisplacementPostprocessor(const SymmetricTensor<2, dim> &macroStrain)
+      : DataPostprocessorVector<dim>("displacement_total",
+                                     update_values | update_quadrature_points)
+      , macroStrain(macroStrain)
+    {}
+
+    virtual void evaluate_vector_field(
+      const DataPostprocessorInputs::Vector<dim> &inputs,
+      std::vector<Vector<double>> &computed_quantities) const override
+    {
+      for (unsigned int q = 0; q < computed_quantities.size(); ++q)
+      {
+        const Point<dim> &x = inputs.evaluation_points[q];
+        for (unsigned int d = 0; d < dim; ++d)
+        {
+          double macroPart = 0.0;
+          for (unsigned int e = 0; e < dim; ++e)
+            macroPart += macroStrain[d][e] * x[e];
+          computed_quantities[q](d) = inputs.solution_values[q](d) + macroPart;
+        }
+      }
+    }
+
+  private:
+    const SymmetricTensor<2, dim> &macroStrain;
+  };
+
   template <int dim>
   class ElasticProblem
   {
@@ -1104,6 +1144,21 @@ namespace StepCooling
     TimerOutput timer;
 
     ConvergenceTable convergence_table;
+
+    // Per-step macroscopic history, written to CSV at the end of run(). This -- not the .vtu
+    // files -- is what run-to-run comparison uses: Ebar, alphaBar, Cbar and the damage summary
+    // are a handful of numbers per step, and a field file is the wrong shape for them.
+    struct MacroscopicRecord
+    {
+      unsigned int refinementCycle, temperatureStep;
+      double temperature, cooling;
+      std::array<double, 6> Ebar;        // 11 22 33 23 13 12, TENSOR components (not Kelvin)
+      std::array<double, 6> CbarDiag;    // Kelvin diagonal, Pa
+      double meanDamage, maxDamage, meanStressNorm, CbarAsymmetry;
+      unsigned int cgIterations;
+    };
+    std::vector<MacroscopicRecord> macroscopicHistory;
+    void writeMacroscopicHistory(const std::string &fileName) const;
 
     // (pseudo-time, filename) pairs for the ParaView .pvd time series written at the end of
     // run(). The time value is the accumulated cooling s = T_0 - T, which INCREASES over the run
@@ -2199,6 +2254,42 @@ namespace StepCooling
   }
 
   template <int dim>
+  void ElasticProblem<dim>::writeMacroscopicHistory(const std::string &fileName) const
+  {
+    if (macroscopicHistory.empty())
+      return;
+
+    std::ofstream out(fileName);
+    out << "# Macroscopic history, one row per converged temperature step.\n"
+        << "# Ebar and alphaBar are TENSOR components (11 22 33 23 13 12), not Kelvin -- no\n"
+        << "# sqrt(2) factors here. alphaBar = Ebar / (T - T0) is the effective CTE of the\n"
+        << "# polycrystal, defined only where the cooling is nonzero. CbarDiag is the Kelvin\n"
+        << "# diagonal of the homogenized stiffness in Pa. CbarAsymmetry should stay at solver\n"
+        << "# precision: Hill-Mandel guarantees symmetry, nothing in the code enforces it.\n";
+    out << "cycle,step,T,cooling,"
+        << "Ebar_11,Ebar_22,Ebar_33,Ebar_23,Ebar_13,Ebar_12,"
+        << "alphaBar_11,alphaBar_22,alphaBar_33,alphaBar_23,alphaBar_13,alphaBar_12,"
+        << "CbarDiag_1,CbarDiag_2,CbarDiag_3,CbarDiag_4,CbarDiag_5,CbarDiag_6,"
+        << "meanDamage,maxDamage,meanStressNorm,CbarAsymmetry,cgIterations\n";
+    out.precision(10);
+    out << std::scientific;
+    for (const auto &r : macroscopicHistory)
+    {
+      out << r.refinementCycle << ',' << r.temperatureStep << ','
+          << r.temperature << ',' << r.cooling;
+      for (double v : r.Ebar) out << ',' << v;
+      // Effective CTE. The cooling is nonzero for every recorded step, but guard anyway rather
+      // than emit inf if a zero-length step is ever recorded.
+      for (double v : r.Ebar) out << ',' << (r.cooling != 0.0 ? v / (-r.cooling) : 0.0);
+      for (double v : r.CbarDiag) out << ',' << v;
+      out << ',' << r.meanDamage << ',' << r.maxDamage << ',' << r.meanStressNorm
+          << ',' << r.CbarAsymmetry << ',' << r.cgIterations << '\n';
+    }
+    std::cout << "Wrote " << fileName << " (" << macroscopicHistory.size() << " steps)."
+              << std::endl;
+  }
+
+  template <int dim>
   void ElasticProblem<dim>::output_results(const unsigned int cycle) const
   {
     // WHAT GOES IN THE FILE, AND WHY
@@ -2249,6 +2340,11 @@ namespace StepCooling
     // The grain c-axis, as a vector, for glyphing.
     CAxisPostprocessor<dim> cAxisPostprocessor(rotmatOrientationCell);
     data_out.add_data_vector(solDisplacement, cAxisPostprocessor);
+
+    // u = Ebar.x + u~. Warp By Vector on THIS shows the RVE actually contracting; warping by
+    // `displacement` alone would show only the fluctuation. See the postprocessor's comment.
+    TotalDisplacementPostprocessor<dim> totalDisplacementPostprocessor(macroscopicStrain);
+    data_out.add_data_vector(solDisplacement, totalDisplacementPostprocessor);
 
     const bool writeFullTensor =
       prm.get_bool({"OutputParameters"}, "WriteFullStressTensor");
@@ -2355,6 +2451,23 @@ namespace StepCooling
     data_out.add_data_vector(cell_von_mises, "von_mises");
     data_out.add_data_vector(cell_pressure, "pressure");
     data_out.add_data_vector(cell_driving_ratio, "damage_driving_ratio");
+
+    // The macroscopic strain. It is ONE tensor for the whole RVE, not a field -- deal.II's
+    // DataOut has no VTK FieldData support, so it is written as uniform cell arrays purely so it
+    // travels with the picture and can be read off in ParaView's Information panel. The
+    // per-step history in macroscopic_history.csv is the better vehicle for plotting it.
+    static const std::array<const char *, 6> ebarNames{{
+      "Ebar_11", "Ebar_22", "Ebar_33", "Ebar_23", "Ebar_13", "Ebar_12"}};
+    const std::array<double, 6> ebarValues{{
+      macroscopicStrain[0][0], macroscopicStrain[1][1], macroscopicStrain[2][2],
+      macroscopicStrain[1][2], macroscopicStrain[0][2], macroscopicStrain[0][1]}};
+    std::array<Vector<double>, 6> cell_ebar;
+    for (unsigned int k = 0; k < 6; ++k)
+    {
+      cell_ebar[k].reinit(nCells);
+      cell_ebar[k] = ebarValues[k];
+      data_out.add_data_vector(cell_ebar[k], ebarNames[k]);
+    }
     if (writeFullTensor)
     {
       for (unsigned int k = 0; k < localNames.size(); ++k)
@@ -2578,6 +2691,8 @@ namespace StepCooling
     // opens ONE entry, scrubs through the cooling history, and shows accumulated cooling in K on
     // the animation clock -- which is what makes "stress builds up, then damage grows" legible
     // as a sequence rather than as ten separate pictures.
+    writeMacroscopicHistory("macroscopic_history.csv");
+
     if (!pvdTimeSeries.empty())
     {
       std::ofstream pvd("polycrystalCooling.pvd");
@@ -2634,6 +2749,41 @@ namespace StepCooling
                                   "MaxNumberOfIterations = " + std::to_string(maxIterations) +
                                   " iterations at temperature step " + std::to_string(temperatureStepNumber));
     } while (!converged);
+
+    // One row per CONVERGED temperature step -- not per inner iteration, which would record
+    // states that are not equilibrium solutions.
+    {
+      MacroscopicRecord record;
+      record.refinementCycle  = refinementCycle;
+      record.temperatureStep  = temperatureStepNumber;
+      record.temperature      = curT;
+      record.cooling          = prm.get_double({"ModelParameters"}, "InitialTemperature") - curT;
+      record.Ebar = {{macroscopicStrain[0][0], macroscopicStrain[1][1], macroscopicStrain[2][2],
+                      macroscopicStrain[1][2], macroscopicStrain[0][2], macroscopicStrain[0][1]}};
+      for (unsigned int k = 0; k < nMacroDofs; ++k)
+        record.CbarDiag[k] = homogenizedStiffness(k, k);
+      record.CbarAsymmetry = lastCbarAsymmetry;
+      record.cgIterations  = lastCgIterations;
+      record.meanStressNorm = computeAverageStress(curT).norm();
+
+      double meanDamage = 0.0, maxDamage = 0.0, weight = 0.0;
+      const QGauss<dim> quad(fe.degree + 1);
+      FEValues<dim> fev(fe, quad, update_JxW_values);
+      for (const auto &cell : dof_handler.active_cell_iterators())
+      {
+        fev.reinit(cell);
+        const auto qp = damageInQuadraturePoints.get_data(cell);
+        for (unsigned int q = 0; q < quad.size(); ++q)
+        {
+          meanDamage += qp[q]->damage * fev.JxW(q);
+          maxDamage = std::max(maxDamage, qp[q]->damage);
+          weight += fev.JxW(q);
+        }
+      }
+      record.meanDamage = meanDamage / weight;
+      record.maxDamage  = maxDamage;
+      macroscopicHistory.push_back(record);
+    }
 
     // The kinetic equation's residual (see mmsKineticResidual/predict_damage_tempInc_external_solver)
     // integrates the damage increment against old_damage, i.e. the damage at the *start* of the
