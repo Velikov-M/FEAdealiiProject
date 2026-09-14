@@ -163,7 +163,7 @@
    "value": "0.03"
   },
   "InitialGlobalRefinements": {
-   "value": "2",
+   "value": "0",
    "default_value": "0",
    "documentation": "Uniform refinements applied once after reading the mesh: 0->1, 1->8, 2->64 elements per grain.",
    "pattern": "39",
@@ -172,7 +172,7 @@
  },
  "ModelParameters": {
   "InitialTemperature": {
-   "value": "2000",
+   "value": "1800",
    "default_value": "2000",
    "documentation": "Initial temperature of the body",
    "pattern": "0",
@@ -193,7 +193,7 @@
    "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
   },
   "FinalTemperature": {
-   "value": "1800",
+   "value": "2000",
    "default_value": "500",
    "documentation": "Temperature at the end of cooling process",
    "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
@@ -201,14 +201,14 @@
  },
  "OutputParameters": {
   "OutputDirectory": {
-   "value": "/home/dealii/myWork/coolingModelRevision/resolvedGrainCooling/results/aitken-study/none",
+   "value": ".",
    "default_value": "output",
    "documentation": "Directory to store output files",
    "pattern": "25",
    "pattern_description": "[DirectoryName]"
   },
   "OutputFileNamePrefix": {
-   "value": "periodic_64cpg_none",
+   "value": "heat",
    "default_value": "solution",
    "documentation": "Prefix for output file names",
    "pattern": "26",

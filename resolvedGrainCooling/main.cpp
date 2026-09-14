@@ -2980,6 +2980,28 @@ namespace StepCooling
       // A range not divisible by dT shortens the final step to land exactly on Tend rather than
       // overshooting, and that shortened increment is what gets passed to the kinetic equation.
       const double temperatureRange = T0 - Tend;
+
+      // COOLING ONLY. A heating request (Tend > T0) makes temperatureRange negative, and
+      // static_cast<unsigned int> of a negative double is undefined behaviour: this compiler
+      // yields 0, so the run would silently do NOTHING and report success, while another could
+      // yield ~4e9 and grind through that many zero-length steps. Either way it is a trap, so
+      // refuse explicitly.
+      //
+      // Heating is not a sign flip away. Two things are missing, both physical:
+      //   1. A kinetic law for dT > 0. The current law integrates against s = T_0 - T, which
+      //      only increases on cooling, and clamps damage non-decreasing within a step.
+      //   2. Crack CLOSURE. Damage here is a bilateral stiffness reduction, identical in tension
+      //      and compression. Real Mrozowski cracks close on heating and carry load again, which
+      //      is why bulk graphite's CTE is far below the crystallite c-axis value. A bilateral
+      //      damage variable cannot express that; it needs a unilateral (tension/compression
+      //      asymmetric) response.
+      if (temperatureRange <= 0.0)
+        throw std::runtime_error(
+          "FinalTemperature (" + std::to_string(Tend) + " K) must be BELOW InitialTemperature (" +
+          std::to_string(T0) + " K): only the cooling branch is implemented. Heating needs a "
+          "kinetic law for dT > 0 and a unilateral (crack-closure) damage response -- see the "
+          "comment at this check.");
+
       const unsigned int nTemperatureSteps =
         static_cast<unsigned int>(std::ceil(temperatureRange / dT - 1e-9));
       for (unsigned int temperatureStepNumber = 1;

@@ -32,29 +32,60 @@ Against a 200 MPa threshold. This is the damage feedback closing: growing omega 
 lowers sigma_33, which slows further growth. Nine independent runs landing on the same ceiling is a
 strong self-consistency check on the coupling.
 
-### Damage localizes, and the MESH sets the band width
+### Damage localizes -- but that is probably PHYSICS, not a numerical artefact
 
-| `periodic` | 1 | 8 | 64 |
-|---|---|---|---|
-| **max** damage | 0.163 | 0.370 | 0.533 |
-| **mean** damage | 0.0131 | 0.0069 | 0.0052 |
-| volume fraction over threshold | 0.523 | 0.210 | 0.111 |
+An earlier version of this file called the localization "the classic pathology of a local damage
+model" and predicted that peak damage would never converge. **That claim rested on the wrong
+diagnostic and is not supported by the data.**
 
-Max damage rises while mean damage falls: damage concentrates into a shrinking volume at growing
-intensity. The over-threshold volume fraction **halves at each refinement** -- ratios 0.40 and 0.53
-for `periodic`, 0.41 and 0.53 for `freeSurface` -- which is `~h`, the signature of a damage band
-**one element thick**.
+The original evidence was the over-threshold STRESS volume halving at each refinement. But that
+measures where `sigma_33` exceeds 200 MPa, and stress concentrations sharpen as the mesh resolves
+them -- it says nothing about the width of the damage band.
 
-This is the classic pathology of a *local* damage model: with no length scale in the constitutive
-law, the localization width is set by the discretization rather than the material. **Peak damage
-and damaged volume will therefore not converge under refinement** -- they will keep rising and
-shrinking. Regularization (nonlocal or gradient damage, or crack-band / fracture-energy scaling) is
-what restores mesh objectivity.
+Measuring the damage field directly, at a fixed absolute threshold so that growth in `max` does not
+contaminate it:
 
-Treat this as strong evidence, not proof. The confirming check is to open the `.pvd` in ParaView and
-see whether the high-damage region is literally one element thick.
+| `periodic` | damaged volume fraction | ratio |
+|---|---|---|
+| 1 elem/grain | 0.444 | -- |
+| 8 elem/grain | 0.1985 | 0.45 |
+| 64 elem/grain | 0.1132 | **0.57** |
 
-### One element per grain fails QUALITATIVELY, not just quantitatively
+A band one element wide gives ratio ~0.5 at every level. A band of fixed PHYSICAL width gives ratio
+-> 1. The measured ratios go 0.45 -> 0.57, **trending upward**, i.e. toward a physical width.
+Integrated damage does the same (ratios 0.53 -> 0.75). Two ratios is thin evidence, but it points
+away from the pathology, not toward it.
+
+There is also a mechanism reason. The classic pathology comes from strain-SOFTENING runaway with
+vanishing dissipation. This kinetic law is self-limiting: damage lowers C33, which lowers
+`sigma_33`, which slows further growth -- which is why max `sigma_33` is pinned at ~207 MPa in all
+nine runs. "Localized loss of stiffness without global failure" is a fair description of what it
+produces, and that is what Mrozowski crack systems in graphite actually are.
+
+**What remains true:** peak damage is not demonstrably converged (0.163 -> 0.370 -> 0.533 per
+quadrature point), and three resolutions cannot settle whether it has a finite limit. That argues
+for a 512-elements/grain run, not for calling the model broken.
+
+**Scale caveat.** Mrozowski cracks are sub-micron; a filler grain is hundreds of microns. At 64
+elements/grain an element is about a quarter of a grain -- roughly 100x too coarse to resolve a
+crack. So the band is a smeared representation of many cracks, not a crack. That is legitimate, but
+it makes the band width a modelling choice rather than a prediction, and what needs validating is
+whether the right AMOUNT of compliance is introduced -- calibration against measured bulk CTE.
+
+### The gap this points at: damage here is bilateral, Mrozowski cracks are not
+
+Mrozowski cracks lower bulk graphite's CTE *because they close on heating* -- the c-axis expansion
+is absorbed by shutting the pores. That is a unilateral, contact effect.
+
+This model's damage is `C33 -> C33(1-omega)`: a bilateral stiffness reduction, identical in tension
+and compression, with no closure. It therefore cannot reproduce the signature Mrozowski effect on
+CTE -- and consistently, `alphaBar` moved by 0.1% while damage reached 0.53.
+
+Only the COOLING branch is implemented. Heating needs both a kinetic law for `dT > 0` and a
+unilateral response; the code now refuses a heating request explicitly rather than silently running
+zero steps (which is what it did before -- `static_cast<unsigned int>` of a negative step count).
+
+### One element per grain fails QUALITATIVELY### One element per grain fails QUALITATIVELY, not just quantitatively
 
 `min sigma_33` for `periodic`: **+150 -> +27 -> -109 MPa**.
 
