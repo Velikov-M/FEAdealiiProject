@@ -450,15 +450,15 @@ Wrote ParaView time series polycrystalCooling.pvd (10 steps). Open THIS, not the
 
 
 +---------------------------------------------+------------+------------+
-| Total wallclock time elapsed since start    |      79.5s |            |
+| Total wallclock time elapsed since start    |        36s |            |
 |                                             |            |            |
 | Section                         | no. calls |  wall time | % of total |
 +---------------------------------+-----------+------------+------------+
-| Assemble system                 |        73 |      11.4s |        14% |
-| Grain stiffness cache           |        10 |    0.0062s |         0% |
-| Linear solver setup             |        63 |    0.0493s |         0% |
-| Predict damage increment        |        63 |      48.9s |        61% |
-| Setup of system                 |         1 |    0.0853s |      0.11% |
-| Solve system                    |        63 |      6.29s |       7.9% |
+| Assemble system                 |        73 |      4.69s |        13% |
+| Grain stiffness cache           |        10 |   0.00434s |         0% |
+| Linear solver setup             |        63 |    0.0299s |         0% |
+| Predict damage increment        |        63 |      21.7s |        60% |
+| Setup of system                 |         1 |    0.0508s |      0.14% |
+| Solve system                    |        63 |      2.16s |         6% |
 +---------------------------------+-----------+------------+------------+
 

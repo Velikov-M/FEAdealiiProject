@@ -46,6 +46,15 @@ def run_one(name, outdir, overrides, dry_run=False):
     set_param(cfg, "OutputParameters", "OutputDirectory", str(outdir))
     set_param(cfg, "OutputParameters", "OutputFileNamePrefix", name)
 
+    # Clear any output from a PREVIOUS run of the same name before writing. Without this, a run
+    # that fails partway leaves its new files 1..k sitting beside stale files k+1..10 from an
+    # earlier sweep -- and the .pvd happily references all ten, silently mixing two different
+    # configurations into one "time series". (Spotted in the wild: a step-10 .vtu three days old
+    # and half the size of its neighbours, because it predated the strain arrays.)
+    if outdir.exists():
+        for stale in list(outdir.glob("*.vtu")) + list(outdir.glob("*.pvd")) + \
+                     list(outdir.glob("*.csv")) + list(outdir.glob("*.log")):
+            stale.unlink()
     outdir.mkdir(parents=True, exist_ok=True)
     # The binary reads ./input.json relative to its own working directory (build/).
     with open(BUILD / "input.json", "w") as f:

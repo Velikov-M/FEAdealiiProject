@@ -668,6 +668,18 @@ namespace StepCooling
                         Patterns::Anything(),
                         "Prefix for output file names");
 
+      prm.declare_entry("WriteFullStrainTensor",
+                        "false",
+                        Patterns::Bool(),
+                        "Also write the complete TOTAL strain tensor in both frames: eps_11, "
+                        "eps_22, eps_12, eps_13, eps_23 (local; eps_33 is always written) and "
+                        "eps_xx ... eps_yz (global). Total strain means eps = Ebar + sym(grad u~), "
+                        "whose volume average is exactly Ebar. The ELASTIC strain that actually "
+                        "generates stress is eps minus the thermal eigenstrain, and that "
+                        "eigenstrain is diag(alpha_a, alpha_a, alpha_c)*(T-T_0) in the LOCAL frame "
+                        "for every grain -- so elastic strain is one known subtraction away and is "
+                        "not written separately.");
+
       prm.declare_entry("WriteFullStressTensor",
                         "false",
                         Patterns::Bool(),
@@ -2608,6 +2620,8 @@ namespace StepCooling
 
     const bool writeFullTensor =
       prm.get_bool({"OutputParameters"}, "WriteFullStressTensor");
+    const bool writeFullStrain =
+      prm.get_bool({"OutputParameters"}, "WriteFullStrainTensor");
     const double T0 = prm.get_double({"ModelParameters"}, "InitialTemperature");
     const double curT = lastProcessedTemperature;
     const double stressThreshold =
@@ -2616,6 +2630,7 @@ namespace StepCooling
     const unsigned int nCells = triangulation.n_active_cells();
     Vector<double> cell_damage(nCells);
     Vector<double> cell_sigma_33(nCells);          // LOCAL: normal to the basal plane -- the driver
+    Vector<double> cell_eps_33(nCells);            // LOCAL: its kinematic partner, total strain
     Vector<double> cell_tau_basal(nCells);         // LOCAL: sqrt(sigma_13^2 + sigma_23^2)
     Vector<double> cell_von_mises(nCells);         // frame independent
     Vector<double> cell_pressure(nCells);          // frame independent
@@ -2627,12 +2642,21 @@ namespace StepCooling
       "sigma_11", "sigma_22", "sigma_12", "sigma_13", "sigma_23"}};
     static const std::array<const char *, 6> globalNames{{
       "sigma_xx", "sigma_yy", "sigma_zz", "sigma_xy", "sigma_xz", "sigma_yz"}};
-    std::array<Vector<double>, 5> cell_sigma_local;
-    std::array<Vector<double>, 6> cell_sigma_global;
+    static const std::array<const char *, 5> localStrainNames{{
+      "eps_11", "eps_22", "eps_12", "eps_13", "eps_23"}};
+    static const std::array<const char *, 6> globalStrainNames{{
+      "eps_xx", "eps_yy", "eps_zz", "eps_xy", "eps_xz", "eps_yz"}};
+    std::array<Vector<double>, 5> cell_sigma_local, cell_eps_local;
+    std::array<Vector<double>, 6> cell_sigma_global, cell_eps_global;
     if (writeFullTensor)
     {
       for (auto &v : cell_sigma_local)  v.reinit(nCells);
       for (auto &v : cell_sigma_global) v.reinit(nCells);
+    }
+    if (writeFullStrain)
+    {
+      for (auto &v : cell_eps_local)  v.reinit(nCells);
+      for (auto &v : cell_eps_global) v.reinit(nCells);
     }
 
     std::vector<Tensor<2, dim>> gradients(n_q_points);
@@ -2654,23 +2678,31 @@ namespace StepCooling
       // Doing it this way, every array is a function of one well-defined per-cell tensor and
       // ParaView reproduces any of them exactly.
       double damage = 0.0;
-      SymmetricTensor<2, dim> localStressAvg;
+      SymmetricTensor<2, dim> localStressAvg, localStrainAvg;
 
       for (unsigned int q = 0; q < n_q_points; ++q)
       {
+        // Total strain: macroscopic plus fluctuation. macroscopicStrain is identically zero for
+        // every BC family except "periodic".
         const SymmetricTensor<2, dim> globalStrain =
           dealii::symmetrize(gradients[q]) + macroscopicStrain;
         const SymmetricTensor<2, dim> localStrain =
           Physics::Transformations::basis_transformation(globalStrain, rotGlobalToLocal);
         damage         += qp_damage[q]->damage;
+        localStrainAvg += localStrain;
         localStressAvg += getLocalStressTensor(localStrain, qp_damage[q]->damage, curT);
       }
       damage         /= n_q_points;
+      localStrainAvg /= n_q_points;
       localStressAvg /= n_q_points;
 
       const unsigned int idx = cell->active_cell_index();
       cell_damage[idx]   = damage;
       cell_sigma_33[idx] = localStressAvg[2][2];
+      // The kinematic partner of sigma_33: TOTAL strain normal to the basal plane. Elastic strain
+      // is this minus alpha_c*(T-T_0); the thermal part is the same for every grain in the local
+      // frame, which is why it is not written separately.
+      cell_eps_33[idx] = localStrainAvg[2][2];
       // Shear ON the basal planes: the two components with one index along c. The current
       // kinetic law reads ONLY sigma_33, so this is written to let that modelling choice be
       // checked rather than assumed -- and it is the quantity an inelastic basal-slip mechanism
@@ -2685,6 +2717,24 @@ namespace StepCooling
       // most legible scalar for the story: threshold it at 1 in ParaView and what remains is
       // exactly the set of grains driving the damage seen in the `damage` array.
       cell_driving_ratio[idx] = cell_sigma_33[idx] / stressThreshold;
+
+      if (writeFullStrain)
+      {
+        const SymmetricTensor<2, dim> globalStrainAvg =
+          Physics::Transformations::basis_transformation(localStrainAvg, rotLocalToGlobal);
+        // Order must match localStrainNames / globalStrainNames above.
+        cell_eps_local[0][idx] = localStrainAvg[0][0];
+        cell_eps_local[1][idx] = localStrainAvg[1][1];
+        cell_eps_local[2][idx] = localStrainAvg[0][1];
+        cell_eps_local[3][idx] = localStrainAvg[0][2];
+        cell_eps_local[4][idx] = localStrainAvg[1][2];
+        cell_eps_global[0][idx] = globalStrainAvg[0][0];
+        cell_eps_global[1][idx] = globalStrainAvg[1][1];
+        cell_eps_global[2][idx] = globalStrainAvg[2][2];
+        cell_eps_global[3][idx] = globalStrainAvg[0][1];
+        cell_eps_global[4][idx] = globalStrainAvg[0][2];
+        cell_eps_global[5][idx] = globalStrainAvg[1][2];
+      }
 
       if (writeFullTensor)
       {
@@ -2707,6 +2757,7 @@ namespace StepCooling
 
     data_out.add_data_vector(cell_damage, "damage");
     data_out.add_data_vector(cell_sigma_33, "sigma_33");
+    data_out.add_data_vector(cell_eps_33, "eps_33");
     data_out.add_data_vector(cell_tau_basal, "tau_basal");
     data_out.add_data_vector(cell_von_mises, "von_mises");
     data_out.add_data_vector(cell_pressure, "pressure");
@@ -2734,6 +2785,13 @@ namespace StepCooling
         data_out.add_data_vector(cell_sigma_local[k], localNames[k]);
       for (unsigned int k = 0; k < globalNames.size(); ++k)
         data_out.add_data_vector(cell_sigma_global[k], globalNames[k]);
+    }
+    if (writeFullStrain)
+    {
+      for (unsigned int k = 0; k < localStrainNames.size(); ++k)
+        data_out.add_data_vector(cell_eps_local[k], localStrainNames[k]);
+      for (unsigned int k = 0; k < globalStrainNames.size(); ++k)
+        data_out.add_data_vector(cell_eps_global[k], globalStrainNames[k]);
     }
 
     data_out.build_patches();

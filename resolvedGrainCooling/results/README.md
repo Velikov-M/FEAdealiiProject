@@ -76,6 +76,41 @@ kinetic solver stayed inside its trustworthy range throughout.
 
 ---
 
+### The effective CTE inherits the localization problem
+
+`alphaBar_33` from the `periodic` runs, at the three resolutions:
+
+| | 1 elem/grain | 8 | 64 |
+|---|---|---|---|
+| `alphaBar_33` [1e-6/K] | 2.670 | 3.458 | 4.141 |
+
+**+55% from 1 to 64 elements per grain, and still climbing.** This is not a separate effect: damage
+softens C33, a softer c-axis lets the RVE contract more freely, so `Ebar_33` grows with the damage
+the mesh resolves. The homogenized property therefore inherits the non-convergence of section
+"Damage localizes" above.
+
+That matters more than the damage numbers do, because `alphaBar` is the *publishable* output of this
+formulation -- the effective CTE of the polycrystal. **It cannot be quoted from these runs.** Until
+the damage model carries a length scale, the effective CTE is a function of the mesh.
+
+(For reference, the undamaged effective CTE -- before any damage activates -- is around 2.2e-6, so
+damage is raising it by up to a factor of two.)
+
+### Strain output, added 2026-09-14
+
+Full stress AND total strain, both frames, 38 arrays per step. Total strain means
+`eps = Ebar + sym(grad u~)`; the elastic strain that generates stress is that minus the thermal
+eigenstrain, which is `diag(alpha_a, alpha_a, alpha_c)*(T-T_0)` in the LOCAL frame for every grain,
+so it is one known subtraction away and is not duplicated.
+
+Verified against the written files, not against theory: `<eps_global> = Ebar` to 4.9e-8, 2.0e-8 and
+7.9e-9 relative at 1, 8 and 64 elements per grain -- i.e. Lemma 1 of `homogenization.md`
+(`<sym grad u~> = 0`) holds in the output, and tightens with refinement as it should. Also
+`tr(eps_global) = tr(eps_local)` and `c . eps_global . c = eps_33` to float32 precision.
+
+All nine runs reproduced their previous max-damage values EXACTLY, confirming the added output is
+pure instrumentation.
+
 ## Study 2: realization variability (`seed-sweep/`)
 
 `periodic`, 8 elements/grain, 8 seeds.

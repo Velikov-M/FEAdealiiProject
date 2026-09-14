@@ -163,7 +163,7 @@
    "value": "0.03"
   },
   "InitialGlobalRefinements": {
-   "value": "1",
+   "value": "2",
    "default_value": "0",
    "documentation": "Uniform refinements applied once after reading the mesh: 0->1, 1->8, 2->64 elements per grain.",
    "pattern": "39",
@@ -201,14 +201,14 @@
  },
  "OutputParameters": {
   "OutputDirectory": {
-   "value": "/home/dealii/myWork/coolingModelRevision/resolvedGrainCooling/results/seed-sweep/periodic_08cpg_seed77",
+   "value": "/home/dealii/myWork/coolingModelRevision/resolvedGrainCooling/results/bc-resolution-sweep/periodic_64cpg_seed20260905",
    "default_value": "output",
    "documentation": "Directory to store output files",
    "pattern": "25",
    "pattern_description": "[DirectoryName]"
   },
   "OutputFileNamePrefix": {
-   "value": "periodic_08cpg_seed77",
+   "value": "periodic_64cpg_seed20260905",
    "default_value": "solution",
    "documentation": "Prefix for output file names",
    "pattern": "26",
@@ -222,10 +222,17 @@
    "pattern_description": "[Integer range 1...2147483647 (inclusive)]"
   },
   "WriteFullStressTensor": {
-   "value": "false",
+   "value": "true",
    "default_value": "false",
    "documentation": "Also write the complete stress tensor in BOTH frames (five remaining local components plus all six global). Off by default; on for post-hoc analysis.",
    "pattern": "33",
+   "pattern_description": "[Bool]"
+  },
+  "WriteFullStrainTensor": {
+   "value": "true",
+   "default_value": "false",
+   "documentation": "Also write the complete TOTAL strain tensor in both frames.",
+   "pattern": "41",
    "pattern_description": "[Bool]"
   }
  },
@@ -329,7 +336,7 @@
    "pattern_description": "[Selection zeroDisplacement|freeSurface|periodic ]"
   },
   "OrientationSeed": {
-   "value": "77",
+   "value": "20260905",
    "default_value": "20260905",
    "documentation": "Seed for per-grain random c-axis orientations. RECORD THIS with any result.",
    "pattern": "32",

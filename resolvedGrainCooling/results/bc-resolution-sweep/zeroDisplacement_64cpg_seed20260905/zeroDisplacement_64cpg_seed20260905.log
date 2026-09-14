@@ -1,8 +1,8 @@
 Boundary conditions: zeroDisplacement
 Threading: WorkStream, n_threads=12 (hardware concurrency 12)
+Boundary faces per pair: x=100, y=100, z=100
 Grains: 10^3 = 1000, 64000 cells => 64 elements per grain
 Orientations: seed=20260905, |mean c-axis|=0.0210999 (expect ~0), mean c_z^2=0.331402 (expect ~0.3333)
-Boundary faces per pair: x=1600, y=1600, z=1600
 Refinement cycle 0, temperature step 1, iteration 1 (T = 1980):
    Cells: 64000, DoFs: 206763, CG iterations = 119
    sigma_33 (local): min=2.06357e+07, max=3.07786e+07, tension fraction=1, above threshold=0
@@ -702,15 +702,15 @@ Wrote ParaView time series polycrystalCooling.pvd (10 steps). Open THIS, not the
 
 
 +---------------------------------------------+------------+------------+
-| Total wallclock time elapsed since start    |       566s |            |
+| Total wallclock time elapsed since start    |       519s |            |
 |                                             |            |            |
 | Section                         | no. calls |  wall time | % of total |
 +---------------------------------+-----------+------------+------------+
-| Assemble system                 |       109 |      62.9s |        11% |
-| Grain stiffness cache           |        10 |   0.00385s |         0% |
-| Linear solver setup             |        99 |     0.459s |         0% |
-| Predict damage increment        |        99 |       317s |        56% |
-| Setup of system                 |         1 |     0.498s |         0% |
-| Solve system                    |        99 |      91.8s |        16% |
+| Assemble system                 |       109 |      53.4s |        10% |
+| Grain stiffness cache           |        10 |   0.00496s |         0% |
+| Linear solver setup             |        99 |     0.461s |         0% |
+| Predict damage increment        |        99 |       287s |        55% |
+| Setup of system                 |         1 |     0.428s |         0% |
+| Solve system                    |        99 |      86.8s |        17% |
 +---------------------------------+-----------+------------+------------+
 

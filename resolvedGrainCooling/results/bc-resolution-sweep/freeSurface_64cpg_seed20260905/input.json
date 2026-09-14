@@ -222,10 +222,17 @@
    "pattern_description": "[Integer range 1...2147483647 (inclusive)]"
   },
   "WriteFullStressTensor": {
-   "value": "false",
+   "value": "true",
    "default_value": "false",
    "documentation": "Also write the complete stress tensor in BOTH frames (five remaining local components plus all six global). Off by default; on for post-hoc analysis.",
    "pattern": "33",
+   "pattern_description": "[Bool]"
+  },
+  "WriteFullStrainTensor": {
+   "value": "true",
+   "default_value": "false",
+   "documentation": "Also write the complete TOTAL strain tensor in both frames.",
+   "pattern": "41",
    "pattern_description": "[Bool]"
   }
  },
