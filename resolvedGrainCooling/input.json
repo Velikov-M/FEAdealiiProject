@@ -201,14 +201,14 @@
  },
  "OutputParameters": {
   "OutputDirectory": {
-   "value": "/home/dealii/myWork/coolingModelRevision/resolvedGrainCooling/results/bc-resolution-sweep/periodic_64cpg_seed20260905",
+   "value": "/home/dealii/myWork/coolingModelRevision/resolvedGrainCooling/results/aitken-study/none",
    "default_value": "output",
    "documentation": "Directory to store output files",
    "pattern": "25",
    "pattern_description": "[DirectoryName]"
   },
   "OutputFileNamePrefix": {
-   "value": "periodic_64cpg_seed20260905",
+   "value": "periodic_64cpg_none",
    "default_value": "solution",
    "documentation": "Prefix for output file names",
    "pattern": "26",
@@ -266,7 +266,7 @@
    "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
   },
   "MaxNumberOfIterations": {
-   "value": "100",
+   "value": "300",
    "default_value": "100",
    "documentation": "Maximum number of iterations for displacement-damage iteration",
    "pattern": "23",
@@ -299,7 +299,7 @@
    "pattern_description": "[Integer range 1...2147483647 (inclusive)]"
   },
   "CouplingAcceleration": {
-   "value": "aitken",
+   "value": "none",
    "default_value": "none",
    "documentation": "none|aitken",
    "pattern": "38",

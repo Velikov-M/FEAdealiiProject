@@ -76,25 +76,53 @@ kinetic solver stayed inside its trustworthy range throughout.
 
 ---
 
-### The effective CTE inherits the localization problem
+### The effective CTE is resolution-dependent -- but NOT because of damage
 
-`alphaBar_33` from the `periodic` runs, at the three resolutions:
+**This section previously claimed the effective CTE "inherits the localization problem". That was
+wrong, and the correction is more interesting than the error.**
 
-| | 1 elem/grain | 8 | 64 |
-|---|---|---|---|
-| `alphaBar_33` [1e-6/K] | 2.670 | 3.458 | 4.141 |
+`alphaBar_33` from the `periodic` runs, comparing step 1 (zero damage) against step 10 (damaged):
 
-**+55% from 1 to 64 elements per grain, and still climbing.** This is not a separate effect: damage
-softens C33, a softer c-axis lets the RVE contract more freely, so `Ebar_33` grows with the damage
-the mesh resolves. The homogenized property therefore inherits the non-convergence of section
-"Damage localizes" above.
+| resolution | step 1, undamaged | step 10, damaged | change | max damage at step 10 |
+|---|---|---|---|---|
+| 1 elem/grain | 2.677e-6 | 2.670e-6 | **-0.3%** | 0.163 |
+| 8 elem/grain | 3.460e-6 | 3.458e-6 | **-0.0%** | 0.370 |
+| 64 elem/grain | 4.138e-6 | 4.141e-6 | **+0.1%** | 0.533 |
 
-That matters more than the damage numbers do, because `alphaBar` is the *publishable* output of this
-formulation -- the effective CTE of the polycrystal. **It cannot be quoted from these runs.** Until
-the damage model carries a length scale, the effective CTE is a function of the mesh.
+**The effective CTE does not respond to damage at all.** Max damage reaches 0.53 and `alphaBar`
+moves by 0.1%. Same for the homogenized stiffness: `Cbar_3` goes 195.12 -> 195.01 GPa, **-0.06%**,
+over the whole cooling run.
 
-(For reference, the undamaged effective CTE -- before any damage activates -- is around 2.2e-6, so
-damage is raising it by up to a factor of two.)
+The reason is the localization itself, and the two findings fit together exactly: mean damage at
+64 elements/grain only reaches **0.0052**, so the damaged volume is about half a percent. `Cbar` and
+`alphaBar` are VOLUME AVERAGES, and a tightly localized damage field barely perturbs a volume
+average no matter how intense it is locally.
+
+So the +55% spread across resolutions (2.677 -> 3.460 -> 4.138) is present **at zero damage**. It is
+a pure **elastic homogenization convergence** problem: with one trilinear hex per grain the
+fluctuation field `u~` cannot represent the strain needed to accommodate neighbour mismatch, which
+constrains the RVE artificially and biases `alphaBar` low, toward the Voigt end. Refining relaxes it.
+
+That distinction matters because the two problems have different fixes:
+
+- **Elastic non-convergence of `alphaBar`** is cured by refinement. Increments are +0.78 and +0.68
+  between the three resolutions, so it is **not converged even at 64 elements/grain**, and three
+  points are too few to extrapolate the limit. A 512-elements/grain run would settle it.
+- **Damage localization** is NOT cured by refinement -- it gets worse -- and needs a length scale in
+  the constitutive law.
+
+**How the error happened, since it is worth not repeating:** the final `alphaBar` values were
+compared across resolutions and the difference attributed to damage without ever checking the
+undamaged value. The "undamaged ~2.2e-6" figure quoted as a reference came from the earlier baseline
+runs, which used `alpha_c = 27e-6` -- a different material configuration entirely, and not
+comparable to these.
+
+### What IS safe to quote from these runs
+
+`Cbar` and `alphaBar` are reliable as **elastic** homogenized properties at a given resolution, since
+damage perturbs them by less than 0.3%. What is not reliable is the resolution: they are still
+drifting at 64 elements/grain. And the damage field itself -- peak value, damaged volume -- remains
+mesh-dependent for the separate reason above.
 
 ### Strain output, added 2026-09-14
 
