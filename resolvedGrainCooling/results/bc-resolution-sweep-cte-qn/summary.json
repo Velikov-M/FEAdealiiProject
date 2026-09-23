@@ -1,0 +1,125 @@
+[
+ {
+  "bc": "freeSurface",
+  "cellsPerGrain": 1,
+  "seconds": 3.9,
+  "minS33": -126172000.0,
+  "maxS33": 204908000.0,
+  "overThreshold": 0.342625,
+  "meanDamage": 0.00524783,
+  "maxDamage": 0.177551,
+  "meanStressNorm": 1.01999,
+  "damageWarning": false
+ },
+ {
+  "bc": "freeSurface",
+  "cellsPerGrain": 8,
+  "seconds": 40.8,
+  "minS33": -252369000.0,
+  "maxS33": 206106000.0,
+  "overThreshold": 0.140594,
+  "meanDamage": 0.00418137,
+  "maxDamage": 0.353861,
+  "meanStressNorm": 3.45216,
+  "damageWarning": false
+ },
+ {
+  "bc": "freeSurface",
+  "cellsPerGrain": 64,
+  "seconds": 913.5,
+  "minS33": -232347000.0,
+  "maxS33": 207179000.0,
+  "overThreshold": 0.0747598,
+  "meanDamage": 0.00335005,
+  "maxDamage": 0.622473,
+  "meanStressNorm": 1.34874,
+  "damageWarning": false
+ },
+ {
+  "bc": "periodic",
+  "cellsPerGrain": 1,
+  "seconds": 3.4,
+  "minS33": 149718000.0,
+  "maxS33": 204653000.0,
+  "overThreshold": 0.52425,
+  "meanDamage": 0.00728908,
+  "maxDamage": 0.0903996,
+  "meanStressNorm": 0.908855,
+  "alphaBar": [
+   2.51507e-06,
+   2.68632e-06,
+   2.66686e-06
+  ],
+  "damageWarning": false
+ },
+ {
+  "bc": "periodic",
+  "cellsPerGrain": 8,
+  "seconds": 28.0,
+  "minS33": 26294700.0,
+  "maxS33": 205807000.0,
+  "overThreshold": 0.2105,
+  "meanDamage": 0.00385101,
+  "maxDamage": 0.243046,
+  "meanStressNorm": 1.04406,
+  "alphaBar": [
+   3.25196e-06,
+   3.5293e-06,
+   3.4569e-06
+  ],
+  "damageWarning": false
+ },
+ {
+  "bc": "periodic",
+  "cellsPerGrain": 64,
+  "seconds": 503.2,
+  "minS33": -109487000.0,
+  "maxS33": 206697000.0,
+  "overThreshold": 0.111266,
+  "meanDamage": 0.00293378,
+  "maxDamage": 0.407092,
+  "meanStressNorm": 3.90536,
+  "alphaBar": [
+   3.85262e-06,
+   4.23019e-06,
+   4.13951e-06
+  ],
+  "damageWarning": false
+ },
+ {
+  "bc": "zeroDisplacement",
+  "cellsPerGrain": 1,
+  "seconds": 3.6,
+  "minS33": 204324000.0,
+  "maxS33": 204683000.0,
+  "overThreshold": 1.0,
+  "meanDamage": 0.0840078,
+  "maxDamage": 0.129112,
+  "meanStressNorm": 510275000.0,
+  "damageWarning": false
+ },
+ {
+  "bc": "zeroDisplacement",
+  "cellsPerGrain": 8,
+  "seconds": 40.6,
+  "minS33": 166848000.0,
+  "maxS33": 205791000.0,
+  "overThreshold": 0.999359,
+  "meanDamage": 0.0870099,
+  "maxDamage": 0.274705,
+  "meanStressNorm": 458784000.0,
+  "damageWarning": false
+ },
+ {
+  "bc": "zeroDisplacement",
+  "cellsPerGrain": 64,
+  "seconds": 525.2,
+  "minS33": 158802000.0,
+  "maxS33": 206095000.0,
+  "overThreshold": 0.998828,
+  "meanDamage": 0.0884735,
+  "maxDamage": 0.396368,
+  "meanStressNorm": 433294000.0,
+  "damageWarning": false
+ }
+]
