@@ -172,7 +172,7 @@
  },
  "ModelParameters": {
   "InitialTemperature": {
-   "value": "1800",
+   "value": "2000",
    "default_value": "2000",
    "documentation": "Initial temperature of the body",
    "pattern": "0",
@@ -193,7 +193,7 @@
    "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
   },
   "FinalTemperature": {
-   "value": "2000",
+   "value": "1800",
    "default_value": "500",
    "documentation": "Temperature at the end of cooling process",
    "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
@@ -208,7 +208,7 @@
    "pattern_description": "[DirectoryName]"
   },
   "OutputFileNamePrefix": {
-   "value": "heat",
+   "value": "ctechk",
    "default_value": "solution",
    "documentation": "Prefix for output file names",
    "pattern": "26",
@@ -299,7 +299,7 @@
    "pattern_description": "[Integer range 1...2147483647 (inclusive)]"
   },
   "CouplingAcceleration": {
-   "value": "none",
+   "value": "aitken",
    "default_value": "none",
    "documentation": "none|aitken",
    "pattern": "38",

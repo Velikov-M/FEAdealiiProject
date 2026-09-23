@@ -830,7 +830,15 @@ namespace StepCooling
   public:
     CteTensor() = default;
     void setFromPrm(const ParameterHandler &prm);
-    SymmetricTensor<2,dim,double> getcteTensor(double curTemperature) const;
+    SymmetricTensor<2,dim,double> getcteTensor(double curOmega, double curTemperature) const;
+
+    // alpha_33 at zero damage: the coefficient of the rank-one damage term, exactly analogous to
+    // ElasticityTensor::getC33AtZeroDamage().
+    double getAlpha33AtZeroDamage(double curTemperature) const
+    {
+      Point<1> tempPoint(curTemperature);
+      return this->alpha33_0 * this->alpha33_func->value(tempPoint);
+    }
   private:
     std::unique_ptr<Function<1>> alpha11_func;
     std::unique_ptr<Function<1>> alpha33_func;
@@ -855,15 +863,29 @@ namespace StepCooling
     alpha33_func = std::move(fp);
   }
 
+  // Damage reduces the C-AXIS thermal expansion, linearly, exactly as it reduces C33.
+  //
+  // PHYSICS: Mrozowski cracks are lenticular pores lying IN the basal planes, so they open and
+  // close along c. The free volume they provide absorbs c-direction thermal expansion -- which is
+  // why bulk graphite's CTE sits far below the crystallite alpha_c. In the basal plane the crack
+  // faces do not separate, so alpha_11 = alpha_22 are left alone; any basal effect would come
+  // through Poisson coupling to the c-opening and is second order.
+  //
+  // So the whole damage effect stays confined to the c-axis: omega is driven by sigma_33,
+  // degrades C33, and now also degrades alpha_33. One scalar, one axis.
+  //
+  // This also adds a SECOND stabilizing feedback. Damage already lowered C33, lowering sigma_33
+  // and slowing its own growth; now it also shrinks the thermal eigenstrain along c, reducing the
+  // mismatch that drives the stress in the first place.
   template <int dim>
-  SymmetricTensor<2,dim,double> CteTensor<dim>::getcteTensor(double curTemperature) const
+  SymmetricTensor<2,dim,double> CteTensor<dim>::getcteTensor(double curOmega, double curTemperature) const
   {
     SymmetricTensor<2, dim, double> cteTensor;
     Point<1> tempPoint(curTemperature);
     cteTensor[0][0] = this->alpha11_0 * this->alpha11_func->value(tempPoint);
     cteTensor[1][1] = this->alpha11_0 * this->alpha11_func->value(tempPoint);
-    cteTensor[2][2] =this-> alpha33_0 * this->alpha33_func->value(tempPoint);
-    return cteTensor; // inference of damage on thermal expansion is not considered in current implementation, but it can be added if needed
+    cteTensor[2][2] = this->alpha33_0 * this->alpha33_func->value(tempPoint) * (1 - curOmega);
+    return cteTensor;
   }
 
   // WorkStream scratch/copy data. ScratchData is per-thread working memory (reused across the
@@ -884,6 +906,7 @@ namespace StepCooling
         , shapeGradSymm(fe.n_dofs_per_cell(),
                         std::vector<SymmetricTensor<2, dim>>(quadrature.size()))
         , macroCoupling_i(fe.n_dofs_per_cell())
+        , globalCte_q(quadrature.size())
       {}
 
       Scratch(const Scratch &s)
@@ -893,6 +916,7 @@ namespace StepCooling
         , JxW_q(s.JxW_q.size())
         , shapeGradSymm(s.shapeGradSymm)
         , macroCoupling_i(s.macroCoupling_i.size())
+        , globalCte_q(s.globalCte_q.size())
       {}
 
       FEValues<dim> fe_values;
@@ -905,6 +929,9 @@ namespace StepCooling
       // below. That is the whole discipline for keeping the sqrt(2)s inside deal.II: never index
       // a Kelvin vector by hand, and the conversion cannot be got wrong.
       std::vector<SymmetricTensor<2, dim>> macroCoupling_i;
+      // Per-quadrature-point global CTE. Damage-dependent now, so it can no longer be hoisted to
+      // once per cell the way it was.
+      std::vector<SymmetricTensor<2, dim>> globalCte_q;
       // No per-q temperature and no body force any more: the RVE cools uniformly (so the
       // temperature rise is one scalar for the whole step) and the cooling model has no body
       // force at all -- the thermal load enters as an eigenstrain inside sigma. That second
@@ -1120,6 +1147,13 @@ namespace StepCooling
     // is 64x less storage and 64x fewer rotations.
     std::vector<SymmetricTensor<4, dim>> grainStiffnessZeroDamage;
     std::vector<SymmetricTensor<4, dim>> grainDamageDirection;   // n (x) n (x) n (x) n
+    // Same trick for the CTE, which is now damage-dependent too:
+    //     alpha_global(omega) = alpha_global(0) - omega * alpha_33(T) * (n (x) n)
+    // a rank-one update on a rank-2 tensor. Without this the damage dependence would force the
+    // CTE rotation into the quadrature loop, where it had been hoisted to once per cell.
+    std::vector<SymmetricTensor<2, dim>> grainCteZeroDamage;
+    std::vector<SymmetricTensor<2, dim>> grainCaxisOuter;        // n (x) n
+    double grainCacheAlpha33 = 0.0;
     double grainCacheTemperature = std::numeric_limits<double>::quiet_NaN();
     double grainCacheC33 = 0.0;
     void refreshGrainStiffnessCache(double curTemperature);
@@ -1404,7 +1438,7 @@ namespace StepCooling
   SymmetricTensor<2,dim> ElasticProblem<dim>::getLocalStressTensor(const SymmetricTensor<2,dim> &localStrain, double curOmega, double curTemperature) const //provide localStrain!!!
   {
     double T0 = prm.get_double({"ModelParameters"}, "InitialTemperature");
-    return elasticityTensor.getElasticityTensor(curOmega, curTemperature) * (localStrain - cteTensor.getcteTensor(curTemperature) * (curTemperature - T0)); 
+    return elasticityTensor.getElasticityTensor(curOmega, curTemperature) * (localStrain - cteTensor.getcteTensor(curOmega, curTemperature) * (curTemperature - T0)); 
   }
 
   template <int dim>
@@ -1506,9 +1540,13 @@ namespace StepCooling
     const unsigned int nGrains = rotmatOrientationCell.size();
     grainStiffnessZeroDamage.resize(nGrains);
     grainDamageDirection.resize(nGrains);
+    grainCteZeroDamage.resize(nGrains);
+    grainCaxisOuter.resize(nGrains);
 
     const SymmetricTensor<4, dim> localZeroDamage =
       elasticityTensor.getElasticityTensor(0.0, curTemperature);
+    const SymmetricTensor<2, dim> localCteZeroDamage =
+      cteTensor.getcteTensor(0.0, curTemperature);
 
     for (unsigned int g = 0; g < nGrains; ++g)
     {
@@ -1522,10 +1560,14 @@ namespace StepCooling
         for (unsigned int j = i; j < dim; ++j)
           nn[i][j] = rotmatOrientationCell[g][dim-1][i] * rotmatOrientationCell[g][dim-1][j];
       grainDamageDirection[g] = outer_product(nn, nn);
+      grainCaxisOuter[g] = nn;
+      grainCteZeroDamage[g] =
+        Physics::Transformations::basis_transformation(localCteZeroDamage, rotLocalToGlobal);
     }
 
     grainCacheTemperature = curTemperature;
     grainCacheC33 = elasticityTensor.getC33AtZeroDamage(curTemperature);
+    grainCacheAlpha33 = cteTensor.getAlpha33AtZeroDamage(curTemperature);
   }
 
   // Label the six faces of the cube geometrically. The .msh carries no surface elements at all,
@@ -1798,6 +1840,7 @@ namespace StepCooling
     std::vector<double> JxW_q(n_q_points);
     std::vector<std::vector<SymmetricTensor<2,dim>>> shapeGradSymm(
       dofs_per_cell, std::vector<SymmetricTensor<2,dim>>(n_q_points));
+    std::vector<SymmetricTensor<2,dim>> globalCte_q(n_q_points);
 
     // The RVE cools uniformly, so the temperature rise is ONE scalar for the whole domain, not
     // a field. It is negative on cooling.
@@ -1818,20 +1861,20 @@ namespace StepCooling
       // global frame per cell. This is where the grain-to-grain mismatch actually enters: two
       // neighbouring cells with different orientations get different global C and different
       // global alpha from identical local data.
-      const SymmetricTensor<2,dim> localcteTensor = cteTensor.getcteTensor(curTemperature);
-      const SymmetricTensor<2,dim> globalcteTensor =
-        Physics::Transformations::basis_transformation(localcteTensor, rotTensorLocalToGlobal);
-
-      // Rank-one damage update against the per-grain cache -- see refreshGrainStiffnessCache().
-      // This replaces a rank-4 basis transformation PER QUADRATURE POINT with one tensor
-      // subtraction, the rotation having been done once per grain.
+      // Rank-one damage updates against the per-grain cache -- see refreshGrainStiffnessCache().
+      // Both C and alpha now depend on damage, so both are per-quadrature-point; the rank-one
+      // form keeps that to two tensor subtractions instead of two basis transformations.
       const unsigned int grain = cell->material_id() - 1;
       const SymmetricTensor<4,dim> &C0 = grainStiffnessZeroDamage[grain];
       const SymmetricTensor<4,dim> &nnnn = grainDamageDirection[grain];
+      const SymmetricTensor<2,dim> &a0 = grainCteZeroDamage[grain];
+      const SymmetricTensor<2,dim> &nn = grainCaxisOuter[grain];
       for (const unsigned int q : fe_values.quadrature_point_indices())
       {
         JxW_q[q] = fe_values.JxW(q);
-        globalElasticTensor_q[q] = C0 - (cell_damage[q]->damage * grainCacheC33) * nnnn;
+        const double w = cell_damage[q]->damage;
+        globalElasticTensor_q[q] = C0 - (w * grainCacheC33) * nnnn;
+        globalCte_q[q]           = a0 - (w * grainCacheAlpha33) * nn;
       }
 
       for (const unsigned int i : fe_values.dof_indices())
@@ -1864,7 +1907,7 @@ namespace StepCooling
         // That discontinuity is precisely the physics: it is the mismatch load.
         for (const unsigned int q : fe_values.quadrature_point_indices())
           cell_rhs(i) +=
-            ((shapeGradSymm[i][q] * (globalElasticTensor_q[q] * globalcteTensor)) * deltaT)
+            ((shapeGradSymm[i][q] * (globalElasticTensor_q[q] * globalCte_q[q])) * deltaT)
             * JxW_q[q];
       }
       cell->get_dof_indices(local_dof_indices);
@@ -1909,18 +1952,18 @@ namespace StepCooling
         copy.cell_L = 0;
       }
 
-      const SymmetricTensor<2,dim> localcteTensor = cteTensor.getcteTensor(curTemperature);
-      const SymmetricTensor<2,dim> globalcteTensor =
-        Physics::Transformations::basis_transformation(localcteTensor, rotTensorLocalToGlobal);
-
-      // Rank-one damage update against the per-grain cache -- see the serial path.
+      // Rank-one damage updates against the per-grain cache -- see the serial path.
       const unsigned int grain = cell->material_id() - 1;
       const SymmetricTensor<4,dim> &C0 = grainStiffnessZeroDamage[grain];
       const SymmetricTensor<4,dim> &nnnn = grainDamageDirection[grain];
+      const SymmetricTensor<2,dim> &a0 = grainCteZeroDamage[grain];
+      const SymmetricTensor<2,dim> &nn = grainCaxisOuter[grain];
       for (const unsigned int q : fe_values.quadrature_point_indices())
       {
         scratch.JxW_q[q] = fe_values.JxW(q);
-        scratch.globalElasticTensor_q[q] = C0 - (cell_damage[q]->damage * grainCacheC33) * nnnn;
+        const double w = cell_damage[q]->damage;
+        scratch.globalElasticTensor_q[q] = C0 - (w * grainCacheC33) * nnnn;
+        scratch.globalCte_q[q]           = a0 - (w * grainCacheAlpha33) * nn;
       }
 
       for (const unsigned int i : fe_values.dof_indices())
@@ -1951,7 +1994,7 @@ namespace StepCooling
         // Thermal load only -- no body force in this model (see the serial path).
         for (const unsigned int q : fe_values.quadrature_point_indices())
           copy.cell_rhs(i) +=
-            ((scratch.shapeGradSymm[i][q] * (scratch.globalElasticTensor_q[q] * globalcteTensor))
+            ((scratch.shapeGradSymm[i][q] * (scratch.globalElasticTensor_q[q] * scratch.globalCte_q[q]))
              * deltaT) * scratch.JxW_q[q];
       }
       cell->get_dof_indices(copy.local_dof_indices);
@@ -2371,7 +2414,7 @@ namespace StepCooling
       const auto cell_damage = damageInQuadraturePoints.get_data(cell);
       const Tensor<2, dim> rotGlobalToLocal = getRotTensorGlobalToLocal(cell->material_id());
       const Tensor<2, dim> rotLocalToGlobal = transpose(rotGlobalToLocal);
-      const SymmetricTensor<2, dim> localCte = cteTensor.getcteTensor(curTemperature);
+      // Damage-dependent, so it moves inside the quadrature loop below.
 
       for (unsigned int q = 0; q < quadrature_formula.size(); ++q)
       {
@@ -2382,7 +2425,7 @@ namespace StepCooling
           Physics::Transformations::basis_transformation(globalStrain, rotGlobalToLocal);
         const SymmetricTensor<2, dim> localStress =
           elasticityTensor.getElasticityTensor(cell_damage[q]->damage, curTemperature) *
-          (localStrain - localCte * deltaT);
+          (localStrain - cteTensor.getcteTensor(cell_damage[q]->damage, curTemperature) * deltaT);
         integratedStress +=
           Physics::Transformations::basis_transformation(localStress, rotLocalToGlobal) *
           fe_values.JxW(q);

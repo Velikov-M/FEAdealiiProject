@@ -98,8 +98,8 @@ def summarize(log):
     return out
 
 
-def bc_sweep(seed, dry_run, only=None):
-    study = ROOT / "results" / "bc-resolution-sweep"
+def bc_sweep(seed, dry_run, only=None, tag=""):
+    study = ROOT / "results" / ("bc-resolution-sweep" + (("-" + tag) if tag else ""))
     rows = []
     for bc in ("zeroDisplacement", "freeSurface", "periodic"):
         for refin, cpg in RESOLUTIONS.items():
@@ -166,6 +166,9 @@ if __name__ == "__main__":
     ap.add_argument("--rebuild-summary", action="store_true",
                     help="regenerate summary.json from the run logs already on disk, without "
                          "re-running anything")
+    ap.add_argument("--tag", default="",
+                    help="suffix for the study directory, so a new sweep does not overwrite an "
+                         "earlier one that is serving as a control")
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
     if not (a.bc_sweep or a.seed_sweep or a.rebuild_summary):
@@ -187,6 +190,6 @@ if __name__ == "__main__":
         merge_summary(study, rows, key=("bc", "cellsPerGrain"))
         sys.exit(0)
     if a.bc_sweep:
-        bc_sweep(a.seed, a.dry_run, a.only)
+        bc_sweep(a.seed, a.dry_run, a.only, a.tag)
     if a.seed_sweep:
         seed_sweep(a.seeds, a.dry_run)
