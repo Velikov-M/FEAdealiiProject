@@ -163,7 +163,7 @@
    "value": "0.03"
   },
   "InitialGlobalRefinements": {
-   "value": "2",
+   "value": "0",
    "default_value": "0",
    "documentation": "Uniform refinements applied once after reading the mesh: 0->1, 1->8, 2->64 elements per grain.",
    "pattern": "39",
@@ -201,14 +201,14 @@
  },
  "OutputParameters": {
   "OutputDirectory": {
-   "value": "/home/dealii/myWork/coolingModelRevision/resolvedGrainCooling/results/bc-resolution-sweep-cte/periodic_64cpg_seed20260905",
+   "value": ".",
    "default_value": "output",
    "documentation": "Directory to store output files",
    "pattern": "25",
    "pattern_description": "[DirectoryName]"
   },
   "OutputFileNamePrefix": {
-   "value": "periodic_64cpg_seed20260905",
+   "value": "out",
    "default_value": "solution",
    "documentation": "Prefix for output file names",
    "pattern": "26",
@@ -311,6 +311,27 @@
    "documentation": "Warn once when max damage exceeds this.",
    "pattern": "40",
    "pattern_description": "[Double 0...1 (inclusive)]"
+  },
+  "FrozenCbarQuasiNewton": {
+   "value": "true",
+   "default_value": "false",
+   "documentation": "see main.cpp",
+   "pattern": "99",
+   "pattern_description": "[Anything]"
+  },
+  "MacroscopicStressTolerance": {
+   "value": "1e-8",
+   "default_value": "1e-10",
+   "documentation": "see main.cpp",
+   "pattern": "99",
+   "pattern_description": "[Anything]"
+  },
+  "MaxMacroscopicIterations": {
+   "value": "4",
+   "default_value": "3",
+   "documentation": "see main.cpp",
+   "pattern": "99",
+   "pattern_description": "[Anything]"
   }
  },
  "ParallelizationParameters": {
