@@ -163,7 +163,7 @@
    "value": "0.03"
   },
   "InitialGlobalRefinements": {
-   "value": "0",
+   "value": "2",
    "default_value": "0",
    "documentation": "Uniform refinements applied once after reading the mesh: 0->1, 1->8, 2->64 elements per grain.",
    "pattern": "39",
@@ -201,14 +201,14 @@
  },
  "OutputParameters": {
   "OutputDirectory": {
-   "value": ".",
+   "value": "/home/dealii/myWork/coolingModelRevision/resolvedGrainCooling/results/bc-resolution-sweep-cte/periodic_64cpg_seed20260905",
    "default_value": "output",
    "documentation": "Directory to store output files",
    "pattern": "25",
    "pattern_description": "[DirectoryName]"
   },
   "OutputFileNamePrefix": {
-   "value": "ctechk",
+   "value": "periodic_64cpg_seed20260905",
    "default_value": "solution",
    "documentation": "Prefix for output file names",
    "pattern": "26",
