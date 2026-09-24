@@ -28,10 +28,7 @@ strain $\varepsilon^{e} = \varepsilon - \varepsilon^\theta$.
 
 **Proposed free energy per unit volume:**
 
-$$\boxed{\ \psi(\varepsilon,T,\omega)
-= \tfrac12\,\varepsilon^{e}:C(\omega,T):\varepsilon^{e}
-\;+\; \psi_{d}(\omega)
-\;+\; \psi_{\mathrm{th}}(T)\ }$$
+$$\boxed{\ \psi(\varepsilon,T,\omega) = \tfrac12\,\varepsilon^{e}:C(\omega,T):\varepsilon^{e} + \psi_{d}(\omega) + \psi_{\mathrm{th}}(T)\ }$$
 
 $\psi_{\mathrm{th}}(T)$ is the purely caloric part (heat capacity); it never enters the mechanics
 because $T$ is prescribed here, but it is needed for the entropy. $\psi_d(\omega)$ is energy
@@ -60,17 +57,17 @@ Differentiating at fixed $\varepsilon, T$, using
 $\partial C/\partial\omega = -\hat C_{33}N^{(4)}$ and
 $\partial\varepsilon^\theta/\partial\omega = -\hat\alpha_{33}N^{(2)}\Delta T$:
 
-$$\frac{\partial\psi}{\partial\omega}
-= \tfrac12\,\varepsilon^{e}:\!\Big(\tfrac{\partial C}{\partial\omega}\Big)\!:\varepsilon^{e}
-\;-\; \sigma:\frac{\partial\varepsilon^\theta}{\partial\omega}
-\;+\;\psi_d'(\omega)$$
+$$\frac{\partial\psi}{\partial\omega} = \tfrac12\,\varepsilon^{e}:\left(\frac{\partial C}{\partial\omega}\right):\varepsilon^{e} \;-\; \sigma:\frac{\partial\varepsilon^\theta}{\partial\omega} \;+\; \psi_d'(\omega)$$
 
 With $\varepsilon^{e}:N^{(4)}:\varepsilon^{e} = (\varepsilon^{e}_{33})^{2}$ and
 $\sigma:N^{(2)} = \sigma_{33}$ (both in the grain frame):
 
-$$\boxed{\ Y = \underbrace{\tfrac12\,\hat C_{33}\,(\varepsilon^{e}_{33})^{2}}_{\text{(a) stiffness}}
-\;\underbrace{-\;\hat\alpha_{33}\,\Delta T\,\sigma_{33}}_{\text{(b) eigenstrain}}
-\;-\;\psi_d'(\omega)\ }$$
+$$\boxed{\ Y = \tfrac12\,\hat C_{33}\,(\varepsilon^{e}_{33})^{2} \;-\; \hat\alpha_{33}\,\Delta T\,\sigma_{33} \;-\; \psi_d'(\omega)\ }$$
+
+The same thing with the two elastic contributions labelled, minus signs included so that each
+brace is the term as it actually enters $Y$:
+
+$$Y = \underbrace{\tfrac12\,\hat C_{33}\,(\varepsilon^{e}_{33})^{2}}_{(a)\ \text{stiffness}} \;+\; \underbrace{\left(-\,\hat\alpha_{33}\,\Delta T\,\sigma_{33}\right)}_{(b)\ \text{eigenstrain}} \;-\; \psi_d'(\omega)$$
 
 Two competing contributions, and reading them is the whole point of the exercise:
 
@@ -187,10 +184,9 @@ against $Y$ rather than $\sigma_{33}$.
 
 ## 7. Entropy, and why the secant/instantaneous CTE question is unavoidable
 
-$$s = -\frac{\partial\psi}{\partial T}
-= -\tfrac12\,\varepsilon^{e}:\frac{\partial C}{\partial T}:\varepsilon^{e}
-\;+\;\Big[\underbrace{\alpha + \frac{d\alpha}{dT}\Delta T}_{\textstyle =\ d\varepsilon^\theta/dT}\Big]:\sigma
-\;-\;\psi_{\mathrm{th}}'(T)$$
+$$s = -\frac{\partial\psi}{\partial T} = -\tfrac12\,\varepsilon^{e}:\frac{\partial C}{\partial T}:\varepsilon^{e} \;+\; \left[\alpha + \frac{d\alpha}{dT}\Delta T\right]:\sigma \;-\; \psi_{\mathrm{th}}'(T)$$
+
+The bracket is exactly $d\varepsilon^\theta/dT$.
 
 The coefficient conjugate to stress in the entropy is $d\varepsilon^\theta/dT$ — the **instantaneous**
 CTE — regardless of how $\varepsilon^\theta$ is parameterised. The code writes
