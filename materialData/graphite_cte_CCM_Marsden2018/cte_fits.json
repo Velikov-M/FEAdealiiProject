@@ -1,13 +1,13 @@
 {
- "source": "Marsden et al. (2018), crystal-continuum model (CCM), acoustic plus optical modes (red dashed curve) -- full citation to be filled in",
- "provenance": "curve DIGITIZED from a figure image by pixel colour (digitize_alpha_c.py); T >= 300 K only",
- "quantity": "the figure plots the INSTANTANEOUS CTE d eps/dT; the secant is derived here by closed-form integration from T_ref",
+ "source": "B. Marsden, A. Mummery, P. Mummery, Modelling the coefficient of thermal expansion in graphite crystals: implications of lattice strain due to irradiation and pressure, Proc. R. Soc. A 474 (2018) 20180075, doi:10.1098/rspa.2018.0075. CCM acoustic plus optical modes: alpha_c red dashed curve (Fig. 4 per PMC text), alpha_a grey-blue dashed curve (Fig. 6)",
+ "provenance": "curves DIGITIZED from figure images by pixel colour (digitize_alpha_*.py); T >= 300 K only",
+ "quantity": "the figures plot the INSTANTANEOUS CTE d e/dT (paper eq. 2.6); the secant is derived here by closed-form integration from T_ref",
  "units": "coefficients in 1e-6/K, T in K; model_ready alpha_0 in 1/K",
  "T_ref_K": 2000.0,
- "parsimony_rule": "simplest form within 1% max relative error on its own range, tried linear_high -> quadratic_high -> einstein2_full",
  "axes": {
   "alpha_c": {
    "recommended": "quadratic_high",
+   "parsimony_rule": "first of ['linear_high', 'quadratic_high', 'einstein2_full'] within 1% max relative error on its own range",
    "fits": {
     "linear_high": {
      "valid_T_K": [
@@ -22,7 +22,8 @@
      "rms_1e-6_per_K": 0.12184038371936735,
      "max_abs_error_1e-6_per_K": 0.34607365809737445,
      "max_rel_error": 0.010017444535065879,
-     "secant_closed_form_vs_quadrature_max_rel": 4.0164742033280824e-16,
+     "passes_parsimony_tolerance": false,
+     "secant_closed_form_vs_quadrature_max_rel": 3.954999172313194e-16,
      "instantaneous_at_T_ref_per_K": 3.57214654671658e-05,
      "table_1e-6_per_K": {
       "1000": {
@@ -76,7 +77,8 @@
      "rms_1e-6_per_K": 0.03895728674459286,
      "max_abs_error_1e-6_per_K": 0.11146271412864905,
      "max_rel_error": 0.0032252689335589093,
-     "secant_closed_form_vs_quadrature_max_rel": 3.9623630000358013e-16,
+     "passes_parsimony_tolerance": true,
+     "secant_closed_form_vs_quadrature_max_rel": 3.9616602668339536e-16,
      "instantaneous_at_T_ref_per_K": 3.580665970161652e-05,
      "table_1e-6_per_K": {
       "1000": {
@@ -130,7 +132,8 @@
      "rms_1e-6_per_K": 0.02565002919522265,
      "max_abs_error_1e-6_per_K": 0.1720520601342841,
      "max_rel_error": 0.006008159549883508,
-     "secant_closed_form_vs_quadrature_max_rel": 1.6881950067649116e-14,
+     "passes_parsimony_tolerance": true,
+     "secant_closed_form_vs_quadrature_max_rel": 1.683923636127403e-14,
      "instantaneous_at_T_ref_per_K": 3.5773269643279226e-05,
      "table_1e-6_per_K": {
       "300": {
@@ -174,6 +177,239 @@
       "alpha_0_per_K": 3.5773269643279226e-05,
       "secant_functionOfTemperature": "if(abs(T-2000)<1e-3, 1, ((1.0727797542e+04)*(1/(exp((3.6075681433e+02)/T)-1) - 1/(exp((3.6075681433e+02)/2000)-1)) + (1.1334270729e+04)*(1/(exp((1.7403369737e+03)/T)-1) - 1/(exp((1.7403369737e+03)/2000)-1)))/((T-2000)*(3.5773269643e+01)))",
       "instantaneous_functionOfTemperature": "((2.9736922814e+01)*((3.6075681433e+02)/T)^2*exp((3.6075681433e+02)/T)/(exp((3.6075681433e+02)/T)-1)^2 + (6.5126874275e+00)*((1.7403369737e+03)/T)^2*exp((1.7403369737e+03)/T)/(exp((1.7403369737e+03)/T)-1)^2)/(3.5773269643e+01)",
+      "T_ref_K": 2000.0,
+      "note": "alpha(T) = alpha_0 * f(T). The model's eps_th = alpha(T)*(T - T_0) needs the SECANT f, and only for T_0 = T_ref. The instantaneous f is for reference / an integrated-eps_th formulation."
+     }
+    }
+   }
+  },
+  "alpha_a": {
+   "recommended": "einstein1c_full",
+   "parsimony_rule": "first of ['linear_high', 'quadratic_high', 'einstein1c_full', 'cubic_high'] within 0.03e-6/K max absolute error on its own range",
+   "fits": {
+    "linear_high": {
+     "valid_T_K": [
+      1000,
+      2500
+     ],
+     "coefficients": {
+      "c0_1e-6_per_K_per_K^0": 1.3648799203536555,
+      "c1_1e-6_per_K_per_K^1": 0.0005108480828917463,
+      "u": "T - 2000"
+     },
+     "rms_1e-6_per_K": 0.0620223007760254,
+     "max_abs_error_1e-6_per_K": 0.16855885885044053,
+     "max_rel_error": 0.2446072541727478,
+     "passes_parsimony_tolerance": false,
+     "secant_closed_form_vs_quadrature_max_rel": 2.975288808873947e-16,
+     "instantaneous_at_T_ref_per_K": 1.3648799203536554e-06,
+     "table_1e-6_per_K": {
+      "1000": {
+       "instantaneous": 0.8540318374619092,
+       "secant": 1.1094558789077824
+      },
+      "1500": {
+       "instantaneous": 1.1094558789077824,
+       "secant": 1.237167899630719
+      },
+      "1800": {
+       "instantaneous": 1.2627103037753062,
+       "secant": 1.3137951120644809
+      },
+      "1900": {
+       "instantaneous": 1.3137951120644809,
+       "secant": 1.3393375162090682
+      },
+      "2000": {
+       "instantaneous": 1.3648799203536555,
+       "secant": 1.3648799203536555
+      },
+      "2200": {
+       "instantaneous": 1.4670495369320047,
+       "secant": 1.41596472864283
+      },
+      "2500": {
+       "instantaneous": 1.6203039617995285,
+       "secant": 1.492591941076592
+      }
+     },
+     "model_ready": {
+      "alpha_0_per_K": 1.3648799203536554e-06,
+      "secant_functionOfTemperature": "1 + (1.8714030270e-04)*(T-2000)",
+      "instantaneous_functionOfTemperature": "1 + (3.7428060540e-04)*(T-2000)",
+      "T_ref_K": 2000.0,
+      "note": "alpha(T) = alpha_0 * f(T). The model's eps_th = alpha(T)*(T - T_0) needs the SECANT f, and only for T_0 = T_ref. The instantaneous f is for reference / an integrated-eps_th formulation."
+     }
+    },
+    "quadratic_high": {
+     "valid_T_K": [
+      1000,
+      2500
+     ],
+     "coefficients": {
+      "c0_1e-6_per_K_per_K^0": 1.4083974528639016,
+      "c1_1e-6_per_K_per_K^1": 0.00032410393247897046,
+      "c2_1e-6_per_K_per_K^2": -3.636860435335385e-07,
+      "u": "T - 2000"
+     },
+     "rms_1e-6_per_K": 0.013543982861686118,
+     "max_abs_error_1e-6_per_K": 0.03895462317671505,
+     "max_rel_error": 0.05652971002280518,
+     "passes_parsimony_tolerance": false,
+     "secant_closed_form_vs_quadrature_max_rel": 3.043549169402937e-16,
+     "instantaneous_at_T_ref_per_K": 1.4083974528639016e-06,
+     "table_1e-6_per_K": {
+      "1000": {
+       "instantaneous": 0.7206074768513926,
+       "secant": 1.1251168054465701
+      },
+      "1500": {
+       "instantaneous": 1.1554239757410318,
+       "secant": 1.2970642994496975
+      },
+      "1800": {
+       "instantaneous": 1.3290292246267659,
+       "secant": 1.3711379123688907
+      },
+      "1900": {
+       "instantaneous": 1.3723501991806693,
+       "secant": 1.3909799694281746
+      },
+      "2000": {
+       "instantaneous": 1.4083974528639016,
+       "secant": 1.4083974528639016
+      },
+      "2200": {
+       "instantaneous": 1.4586707976183542,
+       "secant": 1.4359586988646846
+      },
+      "2500": {
+       "instantaneous": 1.4795279082200024,
+       "secant": 1.4591162656891827
+      }
+     },
+     "model_ready": {
+      "alpha_0_per_K": 1.4083974528639016e-06,
+      "secant_functionOfTemperature": "1 + (1.1506124632e-04)*(T-2000) + (-8.6075618023e-08)*(T-2000)^2",
+      "instantaneous_functionOfTemperature": "1 + (2.3012249264e-04)*(T-2000) + (-2.5822685407e-07)*(T-2000)^2",
+      "T_ref_K": 2000.0,
+      "note": "alpha(T) = alpha_0 * f(T). The model's eps_th = alpha(T)*(T - T_0) needs the SECANT f, and only for T_0 = T_ref. The instantaneous f is for reference / an integrated-eps_th formulation."
+     }
+    },
+    "einstein1c_full": {
+     "valid_T_K": [
+      300,
+      2500
+     ],
+     "coefficients": {
+      "c_1e-6_per_K": -0.6536112186686542,
+      "A1_1e-6_per_K": 2.3759438891440303,
+      "theta1_K": 2701.0216249409923
+     },
+     "rms_1e-6_per_K": 0.006332309819560317,
+     "max_abs_error_1e-6_per_K": 0.02441862889954538,
+     "max_rel_error": 0.5533344443253038,
+     "passes_parsimony_tolerance": true,
+     "secant_closed_form_vs_quadrature_max_rel": 4.6130469493511785e-14,
+     "instantaneous_at_T_ref_per_K": 1.3919051348599292e-06,
+     "table_1e-6_per_K": {
+      "300": {
+       "instantaneous": -0.6299178213672574,
+       "secant": 0.6661281374558099
+      },
+      "500": {
+       "instantaneous": -0.338257022580651,
+       "secant": 0.8232484039743471
+      },
+      "1000": {
+       "instantaneous": 0.6836543903132513,
+       "secant": 1.128878066522993
+      },
+      "1500": {
+       "instantaneous": 1.1724058682850442,
+       "secant": 1.295402323356668
+      },
+      "1800": {
+       "instantaneous": 1.3225438143744925,
+       "secant": 1.3588122213543972
+      },
+      "1900": {
+       "instantaneous": 1.3596046670426685,
+       "secant": 1.3761178561992637
+      },
+      "2000": {
+       "instantaneous": 1.3919051348599292,
+       "secant": 1.3919051348599292
+      },
+      "2200": {
+       "instantaneous": 1.4451019140598411,
+       "secant": 1.419634349842376
+      },
+      "2500": {
+       "instantaneous": 1.5041048194763722,
+       "secant": 1.4536481293950623
+      }
+     },
+     "model_ready": {
+      "alpha_0_per_K": 1.3919051348599292e-06,
+      "secant_functionOfTemperature": "if(abs(T-2000)<1e-3, 1, ((-6.5361121867e-01)*(T-2000) + (6.4174758242e+03)*(1/(exp((2.7010216249e+03)/T)-1) - 1/(exp((2.7010216249e+03)/2000)-1)))/((T-2000)*(1.3919051349e+00)))",
+      "instantaneous_functionOfTemperature": "((-6.5361121867e-01) + (2.3759438891e+00)*((2.7010216249e+03)/T)^2*exp((2.7010216249e+03)/T)/(exp((2.7010216249e+03)/T)-1)^2)/(1.3919051349e+00)",
+      "T_ref_K": 2000.0,
+      "note": "alpha(T) = alpha_0 * f(T). The model's eps_th = alpha(T)*(T - T_0) needs the SECANT f, and only for T_0 = T_ref. The instantaneous f is for reference / an integrated-eps_th formulation."
+     }
+    },
+    "cubic_high": {
+     "valid_T_K": [
+      1000,
+      2500
+     ],
+     "coefficients": {
+      "c0_1e-6_per_K_per_K^0": 1.3936494406183457,
+      "c1_1e-6_per_K_per_K^1": 0.0002953228396593496,
+      "c2_1e-6_per_K_per_K^2": -2.018795851080833e-07,
+      "c3_1e-6_per_K_per_K^3": 2.1003102112470346e-10,
+      "u": "T - 2000"
+     },
+     "rms_1e-6_per_K": 0.002771447174416215,
+     "max_abs_error_1e-6_per_K": 0.010587334121500702,
+     "max_rel_error": 0.014899147370532932,
+     "passes_parsimony_tolerance": true,
+     "secant_closed_form_vs_quadrature_max_rel": 3.047509037543061e-16,
+     "instantaneous_at_T_ref_per_K": 1.3936494406183456e-06,
+     "table_1e-6_per_K": {
+      "1000": {
+       "instantaneous": 0.6864159947262094,
+       "secant": 1.1261870704714672
+      },
+      "1500": {
+       "instantaneous": 1.1692642468710621,
+       "secant": 1.2964319625343543
+      },
+      "1800": {
+       "instantaneous": 1.3248294411131547,
+       "secant": 1.3610053668087203
+      },
+      "1900": {
+       "instantaneous": 1.3618883297802054,
+       "secant": 1.378157858929737
+      },
+      "2000": {
+       "instantaneous": 1.3936494406183457,
+       "secant": 1.3936494406183457
+      },
+      "2200": {
+       "instantaneous": 1.44631907331489,
+       "secant": 1.420910058825089
+      },
+      "2500": {
+       "instantaneous": 1.5170948418115875,
+       "secant": 1.4572203211843233
+      }
+     },
+     "model_ready": {
+      "alpha_0_per_K": 1.3936494406183456e-06,
+      "secant_functionOfTemperature": "1 + (1.0595305787e-04)*(T-2000) + (-4.8285596847e-08)*(T-2000)^2 + (3.7676444126e-11)*(T-2000)^3",
+      "instantaneous_functionOfTemperature": "1 + (2.1190611574e-04)*(T-2000) + (-1.4485679054e-07)*(T-2000)^2 + (1.5070577651e-10)*(T-2000)^3",
       "T_ref_K": 2000.0,
       "note": "alpha(T) = alpha_0 * f(T). The model's eps_th = alpha(T)*(T - T_0) needs the SECANT f, and only for T_0 = T_ref. The instantaneous f is for reference / an integrated-eps_th formulation."
      }

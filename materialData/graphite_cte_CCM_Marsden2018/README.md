@@ -1,39 +1,47 @@
-# Graphite c-axis CTE vs temperature (CCM, Marsden et al. 2018)
+# Graphite crystallite CTEs vs temperature (CCM, Marsden et al. 2018)
 
-The c-axis thermal expansion coefficient of a graphite crystallite, from the crystal-continuum model
-(CCM) with acoustic **plus optical** modes. Fitted, then integrated to the secant CTE the FE model
-uses.
+The c-axis and basal-plane thermal expansion coefficients, alpha_c and alpha_a, of a graphite
+crystallite. They come from the crystal-continuum model (CCM) with acoustic **and optical** modes,
+are fitted here, and are integrated to the secant CTE the FE model uses.
 
 | file | what it is |
 |---|---|
-| `source_figure_alpha_c.png` | the figure as supplied (red dashed curve = the digitized one) |
-| `digitize_alpha_c.py` | pixel-colour digitizer; produces the CSV |
-| `digitized_alpha_c_CCM_acoustic_optical.csv` | 332 points, 300-2500 K, in 1e-6/K |
+| `source_figure_alpha_c.png`, `source_figure_alpha_a.png` | the figures as supplied |
+| `digitize_alpha_c.py`, `digitize_alpha_a.py` | pixel-colour digitizers; produce the CSVs |
+| `digitized_alpha_{c,a}_CCM_acoustic_optical.csv` | 332 / 438 points, 300-2500 K, in 1e-6/K |
 | `fit_cte.py` | the only thing that produces the fits -- re-run it after changing data or `T_REF` |
 | `cte_fits.json` | every fit: coefficients, errors, instantaneous + secant tables, model-ready strings |
-| `fit_check.png` | data vs fits (instantaneous solid, secant dashed) and residuals |
-| `overlay_check.png` | the einstein2 fit drawn back onto the source figure -- calibration check by eye |
-
-`alpha_a` is not here yet; `fit_cte.py` takes one CSV per axis (`axes_data`), so it slots in as a
-second entry.
+| `fit_check.png` | data vs fits (instantaneous solid, secant dashed) and residuals, both axes |
+| `overlay_check_alpha_{c,a}.png` | the full-range fit drawn back onto each source figure (calibration check) |
 
 ## Provenance -- read this before quoting any number
 
 - **Source:** B. Marsden, A. Mummery, P. Mummery, *Modelling the coefficient of thermal expansion in
   graphite crystals: implications of lattice strain due to irradiation and pressure*, Proc. R. Soc. A
-  **474** (2018) 20180075, doi:10.1098/rspa.2018.0075 (open access, PMC6237503). The figure is
-  Fig. 4 according to the PMC text -- confirm against the PDF.
-- **It is an instantaneous CTE.** Eq. (2.6): `alpha_c = d e_zz / dT`. It also behaves like one:
-  alpha_c -> 0 as T -> 0. The "acoustic plus optical" curve is the paper's simplification of
+  **474** (2018) 20180075, doi:10.1098/rspa.2018.0075 (open access, PMC6237503).
+  - alpha_c is the red dashed curve, in Fig. 4 according to the PMC text (confirm against the PDF).
+  - alpha_a is the grey-blue dashed curve in Fig. 6.
+- **Both are instantaneous CTEs.** Eq. (2.6) defines `alpha_c = d e_zz/dT` and
+  `alpha_a = d e_xx/dT`. The "acoustic plus optical" curves are the paper's simplification of
   extending the upper integration limit to 2x, so the optical modes are approximated, not computed
   separately.
-- **It is a model curve, not data.** Above ~1000 K it lies above the high-temperature measurements in
-  the same figure: about 35.8 at 2000 K, against ~33 for Morgan (XRD) and ~33 for Steward (our
-  previous source). Choosing it over the Steward curve raises alpha_c by ~8% at 2000 K.
-- **Digitization:** by pixel colour, not by eye. The axes were calibrated from the tick marks:
-  18.5 px = 100 K, and 38.5 px = 5e-6/K. As a check, the curve gives alpha_c(100 K) ~ 17e-6, which
-  matches Bailey & Yates. Precision is about half a pixel, i.e. +-0.07e-6/K (+-0.2%). Only
-  T >= 300 K is kept: below that the curve runs through the identically red Bailey & Yates markers.
+- **They are model curves, not data, and both sit above the high-temperature measurements:**
+
+  | at 2000 K | this CCM curve | measurements in the same figures | Steward (current input.json) |
+  |---|---|---|---|
+  | alpha_c | 35.8 | ~33 (Morgan, XRD) | 32 |
+  | alpha_a | 1.39 | ~1.15-1.2 (Morgan, Kellett) | 1.2 |
+  | **alpha_c - alpha_a** | **34.4** | ~32 | **30.8** |
+
+  Switching `input.json` to these curves would raise the mismatch that drives the stresses by about
+  12%.
+- **The published curves are polylines.** In Fig. 6 the kinks at 100, 200 and 300 K are clearly
+  visible: the CCM was evaluated at about 100 K intervals and the points joined by straight lines.
+  Residual structure below about 0.01e-6/K near 300 K is that interpolation, not physics.
+- **Digitization** is by pixel colour, with the axes calibrated from the tick marks (see each
+  digitizer's docstring). Precision is about half a pixel: +-0.07e-6/K for alpha_c and
+  +-0.004e-6/K for alpha_a. Only T >= 300 K is kept. For alpha_a, the legend box is masked: glyph
+  edges of the label text pass the colour test.
 
 ## Instantaneous vs secant
 
@@ -42,48 +50,96 @@ T_0 = 2000 K** (the stress-free `InitialTemperature`):
 
     alpha_sec(T) = 1/(T - T_ref) * integral_{T_ref}^{T} alpha_inst(T') dT',   T_ref = 2000 K
 
-Both fit families integrate in closed form (checked against numerical quadrature to 1e-14), so the
-secant carries no quadrature error. **The secant is tied to T_ref: if `InitialTemperature` changes,
-set `T_REF` in `fit_cte.py` and re-run.**
+Every fit integrates in closed form (checked against numerical quadrature to 5e-14), so the secant
+carries no quadrature error. **The secant is tied to T_ref: if `InitialTemperature` changes, set
+`T_REF` in `fit_cte.py` and re-run.**
 
 ## Fits
 
-Parsimony rule: the simplest form within **1%** max relative error over its own range. This is
-tighter than the 5% used for the elastic constants, because this digitization is about 10x more
-precise.
+Parsimony rule: the first family in the list that is within tolerance on its own range.
 
-| fit | form | valid [K] | max err | alpha_inst(2000) | secant at 1800 / 1000 / 300 K |
+- **alpha_c:** 1% max relative error. The digitization is about 0.2%.
+- **alpha_a:** 0.03e-6/K max **absolute** error. alpha_a crosses zero near 650 K, so a relative error
+  is meaningless there. 0.03e-6/K is 0.1% of the mismatch alpha_c - alpha_a, about 2% of
+  alpha_a(2000 K), and about 4 px on the figure.
+
+### alpha_c
+
+| fit | form | valid [K] | max err | inst(2000) | secant at 1800 / 1000 / 300 K |
 |---|---|---|---|---|---|
-| linear_high | `c0 + c1 u`, u = T-2000 | 1000-2500 | 1.00% (fails rule) | 35.72 | 35.64 / 35.30 / -- |
-| **quadratic_high** (recommended) | `c0 + c1 u + c2 u^2` | 1000-2500 | 0.32% | 35.81 | 35.75 / 35.33 / -- |
+| linear_high | `c0 + c1 u`, u = T-2000 | 1000-2500 | 1.00% (fails) | 35.72 | 35.64 / 35.30 / -- |
+| **quadratic_high** | `c0 + c1 u + c2 u^2` | 1000-2500 | 0.32% | 35.81 | 35.75 / 35.33 / -- |
 | einstein2_full | `A1 E(th1/T) + A2 E(th2/T)` | **300**-2500 | 0.60% | 35.77 | 35.72 / 35.33 / 34.00 |
 
-(units 1e-6/K; `E(x) = x^2 e^x / (e^x - 1)^2`, the Einstein heat-capacity function)
+- Fitted modes: theta1 = 361 K (A1 = 29.7) and theta2 = 1740 K (A2 = 6.5).
 
-- **quadratic_high** is the recommendation for any cooling that stays above 1000 K, which includes
-  the current 2000 -> 1800 K window. Its secant is again a polynomial, `sum c_k u^k / (k+1)`, so
-  there is no 0/0 at T_ref.
-- **einstein2_full** is the one to use **below 1000 K**. It is physically shaped (Grueneisen:
-  alpha ~ heat capacity, one Einstein term per mode group), its residuals look like noise
-  (+-0.05e-6/K), and it fitted theta1 = 361 K and theta2 = 1740 K: the same acoustic + optical
-  split as the model behind the curve. Its secant is a 0/0 at T_ref, so the model-ready string guards
-  it with `if(abs(T-2000)<1e-3, 1, ...)`. deal.II's FunctionParser defines `if` (it returns only the
-  chosen branch, so the 0/0 branch never leaks a NaN). The T_ref term is written as the same
-  expression evaluated at 2000, not as a printed constant, so the cancellation near T_ref is exact.
-- Within 1000-2500 K the two disagree by at most 0.34% (instantaneous) and 0.09% (secant), both
-  inside the digitization error. The choice between them only matters below 1000 K.
+### alpha_a
 
-Over the current 2000 -> 1800 K window, secant and instantaneous differ by only 0.1-0.2%. The
-distinction starts to matter at 300 K, where einstein2 gives a secant of 34.0 against an
-instantaneous 27.1.
+| fit | form | valid [K] | max err | inst(2000) | secant at 1800 / 1000 / 300 K |
+|---|---|---|---|---|---|
+| linear_high | `c0 + c1 u` | 1000-2500 | 0.169 (fails) | 1.365 | 1.314 / 1.109 / -- |
+| quadratic_high | `c0 + c1 u + c2 u^2` | 1000-2500 | 0.039 (fails) | 1.408 | 1.371 / 1.125 / -- |
+| **einstein1c_full** | `c + A E(th/T)` | **300**-2500 | 0.024 | 1.392 | 1.359 / 1.129 / 0.666 |
+| cubic_high | cubic in u | 1000-2500 | 0.011 | 1.394 | 1.361 / 1.126 / -- |
+
+- **Why einstein1c rather than einstein2:** a free two-mode fit drives theta1 -> 0, where E -> 1. The
+  negative contribution (out-of-plane flexural modes, the membrane effect) is already fully excited
+  above 300 K and acts as a **constant**, c = -0.654. The positive in-plane term has
+  theta = 2701 K (A = 2.376), between the paper's theta_L = 2562 K and theta_M = 3623 K. So
+  3 parameters cover the whole 300-2500 K range.
+  - **Do not extrapolate it below 300 K:** the real curve has its minimum near 250 K and returns to
+    0 at T = 0.
+- **The quadratic fails because it is 1% off at T_ref itself** (1.408 vs 1.392-1.394), not only at
+  the ends of its range.
+
+### Which to use
+
+- **Cooling that stays above 1000 K** (includes the current 2000 -> 1800 K window): alpha_c
+  quadratic_high and alpha_a einstein1c_full, or einstein for both. Within 1000-2500 K the families
+  of each axis agree to within the digitization error.
+- **Cooling below 1000 K:** the `_full` fits (einstein2 for alpha_c, einstein1c for alpha_a).
+- At 300 K, alpha_a shows why the secant matters: instantaneous -0.630, but secant from 2000 K
+  +0.666, with the opposite sign.
+
+### Guarded strings
+
+The Einstein secants are 0/0 at T_ref, so their model-ready strings are guarded with
+`if(abs(T-2000)<1e-3, 1, ...)`. deal.II's FunctionParser defines `if`, and it returns only the
+chosen branch, so the 0/0 branch never leaks a NaN. The T_ref term is written as the same expression
+evaluated at 2000, not as a printed constant, so the cancellation near T_ref is exact. Polynomial
+secants are again polynomials, `sum c_k u^k / (k+1)`, with no 0/0.
 
 ## Using a fit
 
-`cte_fits.json -> axes.alpha_c.fits.<fit>.model_ready` gives
+`cte_fits.json -> axes.<alpha_c|alpha_a>.fits.<fit>.model_ready` gives
 
-    alpha33_0                       = alpha_0_per_K
-    alpha33_functionOfTemperature   = secant_functionOfTemperature     (f(2000 K) = 1)
+    alpha33_0 / alpha11_0                                  = alpha_0_per_K
+    alpha33_functionOfTemperature / alpha11_...            = secant_functionOfTemperature   (f(2000 K) = 1)
 
-**Not applied to `input.json`.** `alpha_a` is still missing, and switching alpha_c alone would change
-the driving mismatch. All six strings (three fits, instantaneous and secant) were parsed by deal.II's
-`FunctionParser<1>` and agree with the Python fits to 5e-10, including at T_ref +- 0.002 K.
+**Not applied to `input.json`.**
+
+All 14 strings (7 fits, each instantaneous and secant) were parsed by deal.II's `FunctionParser<1>`
+and agree with the Python fits to 6e-10, including at T_ref +- 0.002 K.
+
+## Why the colours swap between Fig. 4 and Fig. 6
+
+The same model curve is red dashed in Fig. 4 but grey-blue dashed in Fig. 6. The pixel colours show
+this has no physical meaning:
+
+| | Fig. 4 (alpha_c) | Fig. 6 (alpha_a) |
+|---|---|---|
+| acoustic only | solid, RGB (94,129,181) | solid, RGB (255,0,0) |
+| acoustic + optical | dashed, RGB (255,0,0) | dashed, RGB (94,129,181) |
+
+- **(94,129,181) is Mathematica's default first plot colour**, `ColorData[97][1] =
+  RGBColor[0.368417, 0.506779, 0.709798]`, to the last digit. It is not grey: thin dashes
+  anti-aliased against white make it look grey.
+- **(255,0,0) is the named `Red`**, set explicitly. Every data series is also a named colour (Red,
+  Orange, Green, Blue, Purple), consistent across both figures.
+- In each figure one model curve was styled `Red` and the other left at the default. The authors
+  styled a different curve in each figure, so the colours swap.
+- **The line style is the consistent encoding:** dashed = acoustic + optical in both figures.
+- Other signs the figures were built independently: the legend wording differs ("acoustic plus
+  optical mode" vs "acoustic and optical"), and Fig. 6 is visibly sampled coarser. The red model
+  line also clashes with the red Bailey & Yates markers in both figures, which a deliberate colour
+  scheme would avoid.
