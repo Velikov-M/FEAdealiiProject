@@ -4,3 +4,4 @@
 # and the per-step macroscopic history.
 *.vtu
 *.pvd
+*.CONTAMINATED
