@@ -60,3 +60,14 @@ rebuild and the answer is unchanged.
 
 The floor is **two** `Ebar` passes, not one: the first solve only evaluates the residual at the
 `Ebar` carried over from the previous pass; the second confirms the corrected one.
+
+## Note added 2026-10-02: two field files in this archive were overwritten
+
+`periodic_64cpg_seed20260905-1.vtu` and `-2.vtu` were overwritten by a stray run on 2026-10-02 and
+have been renamed `*.CONTAMINATED`. Cause: `build/input.json` was a symlink to the tracked
+`input.json`, and `run_sweep.py` wrote each run's configuration through it -- so the tracked file
+was left pointing its `OutputDirectory` at this archive, and the next plain `./main` wrote into it.
+The tracked files here (`input.json`, `.log`, `_macroscopic_history.csv`) were NOT touched: the
+history CSV is only written at the end of a run, and the stray run was stopped before that. All
+numbers in this document come from the CSVs and logs and are unaffected. Fixed at the root in the
+commit that added this note -- see `run_sweep.py`.

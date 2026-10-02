@@ -3749,7 +3749,14 @@ int main(int argc, char *argv[])
     {
       StepCooling::ParameterHandler prm;
       StepCooling::ParameterReader myReader(prm);
-      myReader.read_parameters("input.json");
+      // Parameter file: argv[1] if given, else ./input.json. The argument exists so drivers such as
+      // run_sweep.py can hand each run its OWN configuration file. They previously wrote the
+      // per-run config to build/input.json -- which is a symlink to the tracked input.json, so
+      // every sweep silently rewrote the tracked file, leaving it pointing OutputDirectory at the
+      // last archived run; the next plain ./main then wrote into that archive.
+      const std::string parameterFile = (argc > 1) ? argv[1] : "input.json";
+      std::cout << "Parameter file: " << parameterFile << std::endl;
+      myReader.read_parameters(parameterFile);
       StepCooling::ElasticProblem<3> myProblem(prm);
       myProblem.run();
     }

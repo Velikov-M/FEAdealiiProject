@@ -53,13 +53,17 @@ def run_one(name, outdir, overrides, dry_run=False):
     # and half the size of its neighbours, because it predated the strain arrays.)
     if outdir.exists():
         for stale in list(outdir.glob("*.vtu")) + list(outdir.glob("*.pvd")) + \
-                     list(outdir.glob("*.csv")) + list(outdir.glob("*.log")):
+                     list(outdir.glob("*.csv")) + list(outdir.glob("*.log")) + \
+                     list(outdir.glob("*.CONTAMINATED")):
             stale.unlink()
     outdir.mkdir(parents=True, exist_ok=True)
-    # The binary reads ./input.json relative to its own working directory (build/).
-    with open(BUILD / "input.json", "w") as f:
+    # The run's configuration lives in the run's OWN directory and is passed to the binary as
+    # argv[1]. Never write build/input.json: it is a symlink to the tracked input.json, and writing
+    # through it silently rewrote the tracked file on every run (leaving it pointing at the last
+    # archive, which the next plain ./main then overwrote).
+    run_cfg = outdir / "input.json"
+    with open(run_cfg, "w") as f:
         json.dump(cfg, f, indent=1)
-    shutil.copy(BUILD / "input.json", outdir / "input.json")
 
     if dry_run:
         print(f"  [dry run] {name}")
@@ -68,7 +72,7 @@ def run_one(name, outdir, overrides, dry_run=False):
     log = outdir / f"{name}.log"
     t0 = time.time()
     with open(log, "w") as lf:
-        proc = subprocess.run([str(BUILD / "main")], cwd=BUILD, stdout=lf,
+        proc = subprocess.run([str(BUILD / "main"), str(run_cfg)], cwd=BUILD, stdout=lf,
                               stderr=subprocess.STDOUT)
     elapsed = time.time() - t0
     if proc.returncode != 0:
