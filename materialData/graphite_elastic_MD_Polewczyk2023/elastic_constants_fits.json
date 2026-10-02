@@ -1,0 +1,329 @@
+{
+ "source": "Polewczyk et al. (2023), molecular dynamics, LCBOP_II potential -- full citation to be filled in",
+ "provenance": "values DIGITIZED BY EYE from a figure (see digitized_LCBOP_II.csv); replace with the paper's tabulated data if available",
+ "units": "GPa for coefficients, K for temperature",
+ "C66": "not independent: C66 = (C11 - C12)/2 for transverse isotropy; the figure's C66 agrees with this within +-2.4% up to 3000 K and 4-5% above (digitization level)",
+ "constants": {
+  "C11": {
+   "linear_full": {
+    "form": "C(T) = a + b*T",
+    "coefficients_GPa": {
+     "a": 960.8422190201724,
+     "b": -0.10074207492795388
+    },
+    "valid_T_K": [
+     300,
+     4000
+    ],
+    "rms_GPa": 13.368107271670786,
+    "max_abs_error_GPa": 25.12608069164321,
+    "max_rel_error": 0.04309790856199521,
+    "model_ready": {
+     "Cij_0_Pa": 759358069164.2646,
+     "Cij_functionOfTemperature": "1 + (-1.326674e-04)*(T-2000)",
+     "T_ref_K": 2000.0,
+     "note": "C11(T) = Cij_0 * f(T), f(2000 K) = 1"
+    }
+   },
+   "linear_high": {
+    "form": "C(T) = a + b*T",
+    "coefficients_GPa": {
+     "a": 956.8214285714292,
+     "b": -0.09935714285714302
+    },
+    "valid_T_K": [
+     1000,
+     4000
+    ],
+    "rms_GPa": 14.515122304348823,
+    "max_abs_error_GPa": 23.60714285714289,
+    "max_rel_error": 0.040492526341583,
+    "model_ready": {
+     "Cij_0_Pa": 758107142857.1432,
+     "Cij_functionOfTemperature": "1 + (-1.310595e-04)*(T-2000)",
+     "T_ref_K": 2000.0,
+     "note": "C11(T) = Cij_0 * f(T), f(2000 K) = 1"
+    }
+   },
+   "quadratic_full": {
+    "form": "C(T) = a + b*T + c*T^2",
+    "coefficients_GPa": {
+     "a": 976.6960329575122,
+     "b": -0.12411794746365068,
+     "c": 5.580233743730576e-06
+    },
+    "valid_T_K": [
+     300,
+     4000
+    ],
+    "rms_GPa": 11.311617886563393,
+    "max_abs_error_GPa": 18.925362314570066,
+    "max_rel_error": 0.025962843667923643,
+    "model_ready": {
+     "Cij_0_Pa": 750781073005.1332,
+     "Cij_functionOfTemperature": "1 + (-1.355881e-04)*(T-2000) + (7.432571e-09)*(T-2000)^2",
+     "T_ref_K": 2000.0,
+     "note": "C11(T) = Cij_0 * f(T), f(2000 K) = 1"
+    }
+   },
+   "recommended": "linear_full"
+  },
+  "C12": {
+   "linear_full": {
+    "form": "C(T) = a + b*T",
+    "coefficients_GPa": {
+     "a": 144.53410182516805,
+     "b": -0.0219020172910663
+    },
+    "valid_T_K": [
+     300,
+     4000
+    ],
+    "rms_GPa": 14.673433073702547,
+    "max_abs_error_GPa": 23.073967339097138,
+    "max_rel_error": 0.2884245917387142,
+    "model_ready": {
+     "Cij_0_Pa": 100730067243.03545,
+     "Cij_functionOfTemperature": "1 + (-2.174328e-04)*(T-2000)",
+     "T_ref_K": 2000.0,
+     "note": "C12(T) = Cij_0 * f(T), f(2000 K) = 1"
+    }
+   },
+   "linear_high": {
+    "form": "C(T) = a + b*T",
+    "coefficients_GPa": {
+     "a": 116.00000000000006,
+     "b": -0.012285714285714297
+    },
+    "valid_T_K": [
+     1000,
+     4000
+    ],
+    "rms_GPa": 9.062143729802116,
+    "max_abs_error_GPa": 13.285714285714235,
+    "max_rel_error": 0.16428571428571423,
+    "model_ready": {
+     "Cij_0_Pa": 91428571428.57146,
+     "Cij_functionOfTemperature": "1 + (-1.343750e-04)*(T-2000)",
+     "T_ref_K": 2000.0,
+     "note": "C12(T) = Cij_0 * f(T), f(2000 K) = 1"
+    }
+   },
+   "quadratic_full": {
+    "form": "C(T) = a + b*T + c*T^2",
+    "coefficients_GPa": {
+     "a": 176.85306638848465,
+     "b": -0.06955515609436984,
+     "c": 1.1375646095725325e-05
+    },
+    "valid_T_K": [
+     300,
+     4000
+    ],
+    "rms_GPa": 2.095564544492813,
+    "max_abs_error_GPa": 3.431587033096946,
+    "max_rel_error": 0.04637279774455332,
+    "model_ready": {
+     "Cij_0_Pa": 83245338582.64629,
+     "Cij_functionOfTemperature": "1 + (-2.889360e-04)*(T-2000) + (1.366520e-07)*(T-2000)^2",
+     "T_ref_K": 2000.0,
+     "note": "C12(T) = Cij_0 * f(T), f(2000 K) = 1"
+    }
+   },
+   "recommended": "quadratic_full"
+  },
+  "C33": {
+   "linear_full": {
+    "form": "C(T) = a + b*T",
+    "coefficients_GPa": {
+     "a": 28.458453410182514,
+     "b": -0.006755523535062442
+    },
+    "valid_T_K": [
+     300,
+     4000
+    ],
+    "rms_GPa": 2.004789600612995,
+    "max_abs_error_GPa": 3.363640730067252,
+    "max_rel_error": 0.7007584854306775,
+    "model_ready": {
+     "Cij_0_Pa": 14947406340.05763,
+     "Cij_functionOfTemperature": "1 + (-4.519529e-04)*(T-2000)",
+     "T_ref_K": 2000.0,
+     "note": "C33(T) = Cij_0 * f(T), f(2000 K) = 1"
+    }
+   },
+   "linear_high": {
+    "form": "C(T) = a + b*T",
+    "coefficients_GPa": {
+     "a": 24.89285714285716,
+     "b": -0.005557142857142862
+    },
+    "valid_T_K": [
+     1000,
+     4000
+    ],
+    "rms_GPa": 1.5065164575054257,
+    "max_abs_error_GPa": 2.4642857142857046,
+    "max_rel_error": 0.44494047619047683,
+    "model_ready": {
+     "Cij_0_Pa": 13778571428.571436,
+     "Cij_functionOfTemperature": "1 + (-4.033178e-04)*(T-2000)",
+     "T_ref_K": 2000.0,
+     "note": "C33(T) = Cij_0 * f(T), f(2000 K) = 1"
+    }
+   },
+   "quadratic_full": {
+    "form": "C(T) = a + b*T + c*T^2",
+    "coefficients_GPa": {
+     "a": 32.77740506739436,
+     "b": -0.013123660806374636,
+     "c": 1.5201868692524302e-06
+    },
+    "valid_T_K": [
+     300,
+     4000
+    ],
+    "rms_GPa": 0.5025189611374783,
+    "max_abs_error_GPa": 1.0123343136503777,
+    "max_rel_error": 0.06531189120325018,
+    "model_ready": {
+     "Cij_0_Pa": 12610830931.65481,
+     "Cij_functionOfTemperature": "1 + (-5.584813e-04)*(T-2000) + (1.205461e-07)*(T-2000)^2",
+     "T_ref_K": 2000.0,
+     "note": "C33(T) = Cij_0 * f(T), f(2000 K) = 1"
+    }
+   },
+   "recommended": "quadratic_full"
+  },
+  "C13": {
+   "linear_full": {
+    "form": "C(T) = a + b*T",
+    "coefficients_GPa": {
+     "a": 6.75898174831892,
+     "b": 0.0030201729106628258
+    },
+    "valid_T_K": [
+     300,
+     4000
+    ],
+    "rms_GPa": 0.6527166804989752,
+    "max_abs_error_GPa": 1.3650336215177683,
+    "max_rel_error": 0.2166720034155188,
+    "model_ready": {
+     "Cij_0_Pa": 12799327569.644571,
+     "Cij_functionOfTemperature": "1 + (2.359634e-04)*(T-2000)",
+     "T_ref_K": 2000.0,
+     "note": "C13(T) = Cij_0 * f(T), f(2000 K) = 1"
+    }
+   },
+   "linear_high": {
+    "form": "C(T) = a + b*T",
+    "coefficients_GPa": {
+     "a": 7.571428571428576,
+     "b": 0.0027428571428571424
+    },
+    "valid_T_K": [
+     1000,
+     4000
+    ],
+    "rms_GPa": 0.3875617133214437,
+    "max_abs_error_GPa": 0.6285714285714299,
+    "max_rel_error": 0.04554865424430651,
+    "model_ready": {
+     "Cij_0_Pa": 13057142857.14286,
+     "Cij_functionOfTemperature": "1 + (2.100656e-04)*(T-2000)",
+     "T_ref_K": 2000.0,
+     "note": "C13(T) = Cij_0 * f(T), f(2000 K) = 1"
+    }
+   },
+   "quadratic_full": {
+    "form": "C(T) = a + b*T + c*T^2",
+    "coefficients_GPa": {
+     "a": 6.323416218255114,
+     "b": 0.0036623984566391456,
+     "c": -1.533105836913753e-07
+    },
+    "valid_T_K": [
+     300,
+     4000
+    ],
+    "rms_GPa": 0.6226793578372165,
+    "max_abs_error_GPa": 1.108337802714634,
+    "max_rel_error": 0.17592663535152922,
+    "model_ready": {
+     "Cij_0_Pa": 13034970796.767904,
+     "Cij_functionOfTemperature": "1 + (2.339212e-04)*(T-2000) + (-1.176148e-08)*(T-2000)^2",
+     "T_ref_K": 2000.0,
+     "note": "C13(T) = Cij_0 * f(T), f(2000 K) = 1"
+    }
+   },
+   "recommended": "linear_high"
+  },
+  "C44": {
+   "linear_full": {
+    "form": "C(T) = a + b*T",
+    "coefficients_GPa": {
+     "a": 0.19409221902017273,
+     "b": 0.0001384245917387128
+    },
+    "valid_T_K": [
+     300,
+     4000
+    ],
+    "rms_GPa": 0.02324373263573887,
+    "max_abs_error_GPa": 0.05561959654178658,
+    "max_rel_error": 0.308997758565481,
+    "model_ready": {
+     "Cij_0_Pa": 470941402.4975983,
+     "Cij_functionOfTemperature": "1 + (2.939317e-04)*(T-2000)",
+     "T_ref_K": 2000.0,
+     "note": "C44(T) = Cij_0 * f(T), f(2000 K) = 1"
+    }
+   },
+   "linear_high": {
+    "form": "C(T) = a + b*T",
+    "coefficients_GPa": {
+     "a": 0.22285714285714295,
+     "b": 0.00012857142857142858
+    },
+    "valid_T_K": [
+     1000,
+     4000
+    ],
+    "rms_GPa": 0.006060915267313266,
+    "max_abs_error_GPa": 0.008571428571428674,
+    "max_rel_error": 0.02380952380952348,
+    "model_ready": {
+     "Cij_0_Pa": 480000000.0000001,
+     "Cij_functionOfTemperature": "1 + (2.678571e-04)*(T-2000)",
+     "T_ref_K": 2000.0,
+     "note": "C44(T) = Cij_0 * f(T), f(2000 K) = 1"
+    }
+   },
+   "quadratic_full": {
+    "form": "C(T) = a + b*T + c*T^2",
+    "coefficients_GPa": {
+     "a": 0.17307971804588843,
+     "b": 0.00016940676084782673,
+     "c": -7.395991112316e-09
+    },
+    "valid_T_K": [
+     300,
+     4000
+    ],
+    "rms_GPa": 0.021239450220776744,
+    "max_abs_error_GPa": 0.04323610710012801,
+    "max_rel_error": 0.2402005950007112,
+    "model_ready": {
+     "Cij_0_Pa": 482309275.2922779,
+     "Cij_functionOfTemperature": "1 + (2.899028e-04)*(T-2000) + (-1.533454e-08)*(T-2000)^2",
+     "T_ref_K": 2000.0,
+     "note": "C44(T) = Cij_0 * f(T), f(2000 K) = 1"
+    }
+   },
+   "recommended": "linear_high"
+  }
+ },
+ "recommended_set_positive_definite_300_4000K": true
+}

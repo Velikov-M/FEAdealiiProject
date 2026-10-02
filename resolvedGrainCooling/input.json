@@ -48,72 +48,72 @@
   },
   "LinearElasticityParameters": {
    "C11_0": {
-    "value": "1060e9",
+    "value": "7.593581e+11",
     "default_value": "1060e9",
-    "documentation": "Elasticity tensor component C11 at reference temperature",
+    "documentation": "C11 at T_ref = 2000 K. Polewczyk et al. 2023, LCBOP_II MD, linear_full fit valid 300-4000 K (max rel err 4.3%), DIGITIZED FROM A FIGURE. Source: materialData/graphite_elastic_MD_Polewczyk2023/.",
     "pattern": "3",
     "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
    },
    "C11_functionOfTemperature": {
-    "value": "1.0",
+    "value": "1 + (-1.326674e-04)*(T-2000)",
     "default_value": "1.0",
-    "documentation": "Function of temperature for elasticity tensor component C11",
+    "documentation": "f(T) normalised to 1 at 2000 K. Polewczyk et al. 2023, LCBOP_II MD, linear_full fit valid 300-4000 K (max rel err 4.3%), DIGITIZED FROM A FIGURE. Source: materialData/graphite_elastic_MD_Polewczyk2023/.",
     "pattern": "4",
     "pattern_description": "[Anything]"
    },
    "C12_0": {
-    "value": "180e9",
+    "value": "8.324534e+10",
     "default_value": "180e9",
-    "documentation": "Elasticity tensor component C12 at reference temperature",
+    "documentation": "C12 at T_ref = 2000 K. Polewczyk et al. 2023, LCBOP_II MD, quadratic_full fit valid 300-4000 K (max rel err 4.6%), DIGITIZED FROM A FIGURE. Source: materialData/graphite_elastic_MD_Polewczyk2023/.",
     "pattern": "9",
     "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
    },
    "C12_functionOfTemperature": {
-    "value": "1.0",
+    "value": "1 + (-2.889360e-04)*(T-2000) + (1.366520e-07)*(T-2000)^2",
     "default_value": "1.0",
-    "documentation": "Function of temperature for elasticity tensor component C12",
+    "documentation": "f(T) normalised to 1 at 2000 K. Polewczyk et al. 2023, LCBOP_II MD, quadratic_full fit valid 300-4000 K (max rel err 4.6%), DIGITIZED FROM A FIGURE. Source: materialData/graphite_elastic_MD_Polewczyk2023/.",
     "pattern": "10",
     "pattern_description": "[Anything]"
    },
    "C13_0": {
-    "value": "15e9",
+    "value": "1.305714e+10",
     "default_value": "15e9",
-    "documentation": "Elasticity tensor component C13 at reference temperature",
+    "documentation": "C13 at T_ref = 2000 K. Polewczyk et al. 2023, LCBOP_II MD, linear_high fit valid 1000-4000 K (max rel err 4.6%), DIGITIZED FROM A FIGURE. Source: materialData/graphite_elastic_MD_Polewczyk2023/.",
     "pattern": "11",
     "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
    },
    "C13_functionOfTemperature": {
-    "value": "1.0",
+    "value": "1 + (2.100656e-04)*(T-2000)",
     "default_value": "1.0",
-    "documentation": "Function of temperature for elasticity tensor component C13",
+    "documentation": "f(T) normalised to 1 at 2000 K. Polewczyk et al. 2023, LCBOP_II MD, linear_high fit valid 1000-4000 K (max rel err 4.6%), DIGITIZED FROM A FIGURE. Source: materialData/graphite_elastic_MD_Polewczyk2023/.",
     "pattern": "12",
     "pattern_description": "[Anything]"
    },
    "C33_0": {
-    "value": "36.5e9",
+    "value": "1.261083e+10",
     "default_value": "36.5e9",
-    "documentation": "Elasticity tensor component C33 at reference temperature",
+    "documentation": "C33 at T_ref = 2000 K. Polewczyk et al. 2023, LCBOP_II MD, quadratic_full fit valid 300-4000 K (max rel err 6.5%), DIGITIZED FROM A FIGURE. Source: materialData/graphite_elastic_MD_Polewczyk2023/.",
     "pattern": "5",
     "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
    },
    "C33_functionOfTemperature": {
-    "value": "1.0",
+    "value": "1 + (-5.584813e-04)*(T-2000) + (1.205461e-07)*(T-2000)^2",
     "default_value": "1.0",
-    "documentation": "Function of temperature for elasticity tensor component C33",
+    "documentation": "f(T) normalised to 1 at 2000 K. Polewczyk et al. 2023, LCBOP_II MD, quadratic_full fit valid 300-4000 K (max rel err 6.5%), DIGITIZED FROM A FIGURE. Source: materialData/graphite_elastic_MD_Polewczyk2023/.",
     "pattern": "6",
     "pattern_description": "[Anything]"
    },
    "C44_0": {
-    "value": "0.25e9",
+    "value": "4.800000e+08",
     "default_value": "0.25e9",
-    "documentation": "Elasticity tensor component C44 at reference temperature",
+    "documentation": "C44 at T_ref = 2000 K. Polewczyk et al. 2023, LCBOP_II MD, linear_high fit valid 1000-4000 K (max rel err 2.4%), DIGITIZED FROM A FIGURE. Source: materialData/graphite_elastic_MD_Polewczyk2023/.",
     "pattern": "7",
     "pattern_description": "[Double 0...MAX_DOUBLE (inclusive)]"
    },
    "C44_functionOfTemperature": {
-    "value": "1.0",
+    "value": "1 + (2.678571e-04)*(T-2000)",
     "default_value": "1.0",
-    "documentation": "Function of temperature for elasticity tensor component C44",
+    "documentation": "f(T) normalised to 1 at 2000 K. Polewczyk et al. 2023, LCBOP_II MD, linear_high fit valid 1000-4000 K (max rel err 2.4%), DIGITIZED FROM A FIGURE. Source: materialData/graphite_elastic_MD_Polewczyk2023/.",
     "pattern": "8",
     "pattern_description": "[Anything]"
    }
@@ -163,7 +163,7 @@
    "value": "0.03"
   },
   "InitialGlobalRefinements": {
-   "value": "2",
+   "value": "0",
    "default_value": "0",
    "documentation": "Uniform refinements applied once after reading the mesh: 0->1, 1->8, 2->64 elements per grain.",
    "pattern": "39",
@@ -201,14 +201,14 @@
  },
  "OutputParameters": {
   "OutputDirectory": {
-   "value": "/home/dealii/myWork/coolingModelRevision/resolvedGrainCooling/results/bc-resolution-sweep-cte-qn/periodic_64cpg_seed20260905",
+   "value": ".",
    "default_value": "output",
    "documentation": "Directory to store output files",
    "pattern": "25",
    "pattern_description": "[DirectoryName]"
   },
   "OutputFileNamePrefix": {
-   "value": "periodic_64cpg_seed20260905",
+   "value": "polycrystalCooling",
    "default_value": "solution",
    "documentation": "Prefix for output file names",
    "pattern": "26",

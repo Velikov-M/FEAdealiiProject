@@ -1,0 +1,17 @@
+# Graphite single-crystal elastic constants vs temperature, LCBOP_II potential (molecular dynamics).
+# Source: Polewczyk et al. (2023), figure of C_ij(T) for several interatomic potentials -- full
+#         citation to be filled in from the user's reference list.
+# DIGITIZED BY EYE from the figure image, NOT from tabulated data. Estimated precision ~1% of each
+# panel's y-axis span (C11 +-5, C12 +-2, C33 +-0.4, C13 +-0.15, C44 +-0.008, C66 +-2 GPa).
+# The second abscissa is read as 500 K (+-50 K): the figure has no tick there.
+# Units: T in K, C in GPa.
+T,C11,C12,C33,C13,C44,C66
+300,940,160,28.5,6.3,0.18,390
+500,905,143,27.0,8.8,0.29,388
+1000,860,117,21.8,10.6,0.36,376
+1500,822,98,15.5,11.8,0.41,357
+2000,760,81,13.2,13.0,0.48,334
+2500,693,76,9.5,13.8,0.54,315
+3000,638,74,7.0,15.4,0.60,289
+3500,603,71,5.2,17.8,0.68,280
+4000,583,80,4.8,18.6,0.74,262
