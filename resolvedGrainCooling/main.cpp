@@ -781,6 +781,15 @@ namespace StepCooling
       return this->C33_0 * this->C33_func->value(tempPoint);
     }
 
+    // Undamaged Voigt constants at T, in the order C11, C12, C13, C33, C44. Used by the startup
+    // self-check, which compares the constructed tensor against these.
+    std::array<double, 5> voigtConstants(double curTemperature) const
+    {
+      Point<1> p(curTemperature);
+      return {{C11_0 * C11_func->value(p), C12_0 * C12_func->value(p), C13_0 * C13_func->value(p),
+               C33_0 * C33_func->value(p), C44_0 * C44_func->value(p)}};
+    }
+
   private:
     std::unique_ptr<Function<1>> C11_func;
     std::unique_ptr<Function<1>> C33_func;
@@ -856,14 +865,64 @@ namespace StepCooling
 
     kelvin_matrix[2][2] = C33;
 
-    kelvin_matrix[3][3] = C44;
-    kelvin_matrix[4][4] = C44;
+    // SHEAR BLOCK: Kelvin entries are TWICE the Voigt constants. Kelvin notation scales shear
+    // components by sqrt(2) on both strain and stress, so sigma_23*sqrt(2) = 2*C_2323 *
+    // eps_23*sqrt(2), i.e. the diagonal entry is 2*C_2323 = 2*C44 (Voigt C44 = C_2323). This
+    // previously wrote C44 and C66 directly, which HALVED both shear moduli and -- because C66 must
+    // equal (C11-C12)/2 for in-plane isotropy -- also broke transverse isotropy: rotating the
+    // tensor 34 degrees about the c-axis changed it by 37%. Verified against the tensor itself (see
+    // checkTransverseIsotropy below, which now runs at every startup). The MMS did not catch it
+    // because its manufactured body force was derived from the same construction: MMS verifies
+    // that the code solves the equations it was given, not that the constitutive law is physical.
+    kelvin_matrix[3][3] = 2.0 * C44;
+    kelvin_matrix[4][4] = 2.0 * C44;
 
-    kelvin_matrix[5][5] = C66;
+    kelvin_matrix[5][5] = 2.0 * C66;   // = C11 - C12
 
     SymmetricTensor<4, dim, double> tmpTensor;
-    Physics::Notation::Kelvin::to_tensor(kelvin_matrix, tmpTensor); //I should double-check notations (Kelvin, Voight, etc.) to make sure the conversion is correct, and the order of components in the matrix is correct
+    Physics::Notation::Kelvin::to_tensor(kelvin_matrix, tmpTensor);
     return tmpTensor;
+  }
+
+  // Physical self-check of the stiffness tensor, run at startup.
+  //
+  // The point is to compare the constructed tensor against PHYSICS rather than against itself,
+  // which is the gap that let the Kelvin/Voigt shear bug through every previous test: (1) the
+  // tensor components must equal the Voigt constants they are meant to be, and (2) a transversely
+  // isotropic crystal must be invariant under ANY rotation about its c-axis. Both are exact
+  // identities, so the tolerance is round-off.
+  template <int dim>
+  void checkTransverseIsotropy(const SymmetricTensor<4, dim> &C,
+                               double C11, double C12, double C13, double C33, double C44)
+  {
+    const double scale = C.norm();
+    const double tol = 1e-12 * scale;
+    const std::array<std::pair<const char *, std::pair<double, double>>, 6> components{{
+      {"C_1111 vs C11", {C[0][0][0][0], C11}},
+      {"C_1122 vs C12", {C[0][0][1][1], C12}},
+      {"C_1133 vs C13", {C[0][0][2][2], C13}},
+      {"C_3333 vs C33", {C[2][2][2][2], C33}},
+      {"C_2323 vs C44", {C[1][2][1][2], C44}},
+      {"C_1212 vs (C11-C12)/2", {C[0][1][0][1], 0.5 * (C11 - C12)}}}};
+    for (const auto &c : components)
+      if (std::abs(c.second.first - c.second.second) > tol)
+        throw std::runtime_error(std::string("stiffness tensor fails its physical self-check: ") +
+                                 c.first + " = " + std::to_string(c.second.first) + " vs " +
+                                 std::to_string(c.second.second) +
+                                 ". Suspect the Kelvin/Voigt convention in getElasticityTensor.");
+
+    // Invariance under rotation about the c-axis (e3 in the local frame), at an arbitrary angle.
+    const double a = 0.6;
+    Tensor<2, dim> R;
+    R[0][0] = std::cos(a); R[0][1] = -std::sin(a);
+    R[1][0] = std::sin(a); R[1][1] =  std::cos(a);
+    R[2][2] = 1.0;
+    const double drift = (Physics::Transformations::basis_transformation(C, R) - C).norm();
+    if (drift > 1e-10 * scale)
+      throw std::runtime_error(
+        "stiffness tensor is NOT transversely isotropic: rotating it about the c-axis changes it "
+        "by " + std::to_string(drift / scale) + " relative. The in-plane frame of each grain is "
+        "arbitrary, so this would make results depend on it.");
   }
 
   template <int dim>
@@ -3025,6 +3084,18 @@ namespace StepCooling
     // dependence functors are only built there.
     elasticityTensor.setFromPrm(prm);
     cteTensor.setFromPrm(prm);
+
+    // Physical self-check of the stiffness at both ends of the temperature range -- the constants
+    // are temperature dependent, so checking one temperature would not cover the run.
+    for (const double Tcheck : {prm.get_double({"ModelParameters"}, "InitialTemperature"),
+                                prm.get_double({"ModelParameters"}, "FinalTemperature")})
+    {
+      const auto c = elasticityTensor.voigtConstants(Tcheck);
+      checkTransverseIsotropy<dim>(elasticityTensor.getElasticityTensor(0.0, Tcheck),
+                                   c[0], c[1], c[2], c[3], c[4]);
+    }
+    std::cout << "Stiffness self-check passed (Voigt components and c-axis rotation invariance)."
+              << std::endl;
 
     assembleMacroCoupling = (boundaryConditionType == BoundaryConditionType::periodic);
 
