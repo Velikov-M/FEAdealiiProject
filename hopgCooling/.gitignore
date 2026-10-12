@@ -1,0 +1,4 @@
+# Scratch files main writes into its working directory on every run (main.cpp: prm.print_parameters
+# and the mesh echo). Regenerated each run; the authoritative config is each run's own input.json.
+test.msh
+tmp_sol.json
