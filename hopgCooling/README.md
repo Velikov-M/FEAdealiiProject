@@ -87,6 +87,49 @@ is computed in the crystallite's own frame:
 For each: volume-weighted mean, RMS, 1st and 99th percentiles, min and max. Quote the
 percentiles. Min and max are single-point extremes at crystallite corners and depend on the mesh.
 
+## Results: `results/mosaic-spread/` (2026-10-12)
+
+Final state is 1000 K (1500 K of cooling). Stresses are in MPa; the in-plane row combines both
+principal stresses.
+
+| sigma (FWHM equiv.) | in-plane, 1st-99th percentile | sigma33, 1st-99th percentile | tauBasal, 99th percentile | von Mises RMS |
+|---|---|---|---|---|
+| 0.25 deg (0.59 deg) | -3.2 ... +2.1 | -0.9 ... +0.9 | 0.43 | 1.3 |
+| 0.5 deg (1.18 deg) | -11.7 ... +7.5 | -1.9 ... +1.9 | 0.84 | 4.5 |
+| 1 deg (2.35 deg) | -42.7 ... +27.8 | -4.5 ... +4.5 | 1.64 | 16.5 |
+
+How the RMS stress scales with sigma (per interval, 0.25->0.5 and 0.5->1):
+
+| measure | exponent | reading |
+|---|---|---|
+| tauBasal | 1.00, 1.00 | exactly linear |
+| sigma33 | 1.06, 1.21 | linear at small sigma, drifting towards quadratic |
+| in-plane | 1.83-1.88, 1.88-1.89 | nearly quadratic, approaching 2 |
+
+- **The basal-plane stresses dominate.** Shear mismatch is first order in the tilt but acts through
+  the very soft C44. In-plane mismatch is second order (theta^2) but acts through C11, which is
+  ~2500x stiffer. The result is in-plane stresses an order of magnitude above sigma33 and
+  tauBasal, and their quadratic growth widens that gap at larger spreads.
+- **sigma33 is linear, not quadratic, at small sigma.** The first-order shear mismatch couples into
+  the normal stress across the basal plane. At larger sigma the theta^2 term takes over.
+- **All measures grow almost linearly with cooling**, except tauBasal, which grows slower:
+  C44 in the MD fit softens on cooling (0.55 -> 0.35 GPa from 2500 to 1000 K).
+- **The in-plane distribution is skewed**, with a longer compressive tail than tensile tail
+  (p01 -43 vs p99 +28 at 1 deg). This is not explained yet; the field dumps would show which
+  crystallites carry it.
+- **Single-point extremes reach about 3x the percentiles** (in-plane min -125 MPa at 1 deg). They
+  sit at crystallite corners and depend on the mesh, so do not quote them.
+
+Whether these levels are "noticeable" depends on strength values the model does not contain:
+
+- tauBasal should be compared with the basal-slip resolved shear strength;
+- sigma33 with the interlayer (cleavage) tensile strength;
+- in-plane with the basal-plane strength.
+
+All three are still to be sourced.
+
+Cost: 58, 58 and 51 min per case (12 threads, AMG, exact path).
+
 ## Limitations: read before quoting a number
 
 - **Cubic crystallites on a regular lattice.** Real HOPG crystallites are platelets: wide in the

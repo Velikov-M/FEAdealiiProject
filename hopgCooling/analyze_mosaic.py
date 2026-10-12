@@ -17,6 +17,7 @@ Usage (from hopgCooling/):  python3 analyze_mosaic.py [--tag mosaic-spread]
 """
 import argparse
 import csv
+import json
 import re
 from pathlib import Path
 
@@ -52,8 +53,16 @@ root = HERE / "results" / args.tag
 runs = []
 for d in sorted(root.glob("sig*deg_*")):
     f = d / "hopg_stress_statistics.csv"
-    if f.exists():
-        runs.append((float(re.match(r"sig([\d.]+)deg", d.name).group(1)), d.name, load(f)))
+    if not f.exists():
+        continue
+    data = load(f)
+    # Only completed runs: a run still in progress has a CSV too, and its last row is not the
+    # final state -- comparing it against finished runs would corrupt every "final step" number.
+    t_end = float(json.loads((d / "input.json").read_text())["ModelParameters"]["FinalTemperature"]["value"])
+    if abs(data["T"][-1] - t_end) > 1e-9:
+        print(f"skipping {d.name}: in progress (at T = {data['T'][-1]:g} K, ends at {t_end:g} K)")
+        continue
+    runs.append((float(re.match(r"sig([\d.]+)deg", d.name).group(1)), d.name, data))
 runs.sort()
 assert runs, f"no completed runs under {root}"
 
@@ -84,12 +93,21 @@ fig.savefig(root / "stress_vs_cooling.png", dpi=140)
 sig = np.array([r[0] for r in runs])
 exponents = {}
 fig, ax = plt.subplots(figsize=(6.5, 4.8))
-for (key, title), marker in zip(MEASURES + [("vonMises", "von Mises")], "osD^v"):
+pairwise = {}
+# Categorical slots 1-5 of the reference palette, in fixed order (one per measure).
+CATEGORICAL = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4"]
+for (key, title), marker, color in zip(MEASURES + [("vonMises", "von Mises")], "osD^v", CATEGORICAL):
     rms = np.array([r[2][f"{key}_rms"][-1] for r in runs])
     if len(runs) >= 2:
         exponents[key] = float(np.polyfit(np.log(sig), np.log(rms), 1)[0])
-    ax.loglog(sig, rms, marker + "-", ms=8, lw=1.5,
+        # Exponent per sigma interval: a drift between intervals means a mixed power law
+        # (e.g. a linear term giving way to a quadratic one), which the single fit hides.
+        pairwise[key] = [float(np.log(rms[i + 1] / rms[i]) / np.log(sig[i + 1] / sig[i]))
+                         for i in range(len(sig) - 1)]
+    ax.loglog(sig, rms, marker + "-", ms=8, lw=1.5, color=color,
               label=f"{title}" + (f"  (slope {exponents[key]:.2f})" if key in exponents else ""))
+ax.set_xticks(sig, [f"{x:g}" for x in sig])
+ax.minorticks_off()
 ax.set_xlabel("mosaic spread sigma [deg] (std per tilt component)")
 ax.set_ylabel("RMS stress at 1000 K [MPa]")
 ax.grid(alpha=0.3, which="both", lw=0.5)
@@ -108,7 +126,9 @@ for sigma, name, d in runs:
         lines.append(f"| {sigma:g} | {2.3548 * sigma:.2f} | {title} | {v['p01']:+.2f} | {v['p99']:+.2f} | "
                      f"{v['rms']:.2f} | {v['min']:+.2f} | {v['max']:+.2f} |")
 lines += ["", "RMS-vs-sigma exponents (log-log fit over the runs above, final step):", ""]
-lines += [f"- {k}: {e:.3f}" for k, e in exponents.items()]
+lines += [f"- {k}: {e:.3f}   (per interval "
+          + ", ".join(f"{sig[i]:g}->{sig[i + 1]:g}: {p:.2f}" for i, p in enumerate(pairwise[k])) + ")"
+          for k, e in exponents.items()]
 (root / "summary.md").write_text(
     "# Mosaic-spread study -- final step (T = 1000 K), stresses in MPa\n\n" + "\n".join(lines) + "\n")
 print("\n".join(lines))

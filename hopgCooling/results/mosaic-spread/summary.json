@@ -1,0 +1,17 @@
+{
+ "sig0.25deg_64cpg_seed20260905": {
+  "sigma_deg": 0.25,
+  "returncode": 0,
+  "wall_s": 3495.7
+ },
+ "sig0.5deg_64cpg_seed20260905": {
+  "sigma_deg": 0.5,
+  "returncode": 0,
+  "wall_s": 3493.9
+ },
+ "sig1deg_64cpg_seed20260905": {
+  "sigma_deg": 1.0,
+  "returncode": 0,
+  "wall_s": 3077.4
+ }
+}
