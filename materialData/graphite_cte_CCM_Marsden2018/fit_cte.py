@@ -27,7 +27,7 @@ from scipy.integrate import quad
 from scipy.optimize import curve_fit
 
 HERE = Path(__file__).parent
-T_REF = 2000.0
+T_REF = 2000.0         # default; override with --tref (the model's InitialTemperature)
 SCALE = 1e-6           # CSV and coefficients are in 1e-6/K
 
 
@@ -158,6 +158,17 @@ def process_axis(name, spec, plot_axes):
 
 
 if __name__ == "__main__":
+    import argparse
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--tref", type=float, default=T_REF,
+                    help="secant reference = the model's stress-free InitialTemperature [K]. "
+                         "Default 2000 writes cte_fits.json; any other value writes "
+                         "cte_fits_Tref<T>.json and fit_check_Tref<T>.png and skips the overlays "
+                         "(they check the digitization, which does not depend on T_ref).")
+    args = ap.parse_args()
+    default_tref = args.tref == T_REF
+    T_REF = args.tref      # module global: read by fit_poly / fit_einstein
+    suffix = "" if default_tref else f"_Tref{T_REF:g}"
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -221,20 +232,20 @@ if __name__ == "__main__":
             "fits": fits,
         }
     fig.tight_layout()
-    fig.savefig(HERE / "fit_check.png", dpi=130)
-    with open(HERE / "cte_fits.json", "w") as f:
+    fig.savefig(HERE / f"fit_check{suffix}.png", dpi=130)
+    with open(HERE / f"cte_fits{suffix}.json", "w") as f:
         json.dump(result, f, indent=1)
     for name, v in result["axes"].items():
         print(name, "recommended:", v["recommended"])
         for fam, r in v["fits"].items():
             print(f"  {fam:16s} max abs {r['max_abs_error_1e-6_per_K']:.4f}  max rel {r['max_rel_error']*100:7.2f}%"
                   f"  secant check {r['secant_closed_form_vs_quadrature_max_rel']:.1e}"
-                  f"  alpha(2000) {r['instantaneous_at_T_ref_per_K']:.4e}")
+                  f"  alpha(T_ref={T_REF:g}) {r['instantaneous_at_T_ref_per_K']:.4e}")
 
     # Overlay: one fitted curve per axis drawn back onto its source figure in that figure's pixel
     # coordinates (the digitizers' calibration). Checks calibration + fit by eye.
     from PIL import Image, ImageDraw
-    for name, spec in axes_spec.items():
+    for name, spec in (axes_spec.items() if default_tref else []):
         d = np.loadtxt(spec["csv"], delimiter=",", skiprows=1)
         fam = dict((f[0], f) for f in spec["families"])[spec["overlay_fit"]]
         m = d[:, 0] >= fam[1]
