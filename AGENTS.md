@@ -1,5 +1,23 @@
 # FEA nuclear-graphite crystallite model
 
+## Session protocol
+
+At the start of every new task:
+1. Read AGENTS.md and the relevant current-state documents under docs/.
+2. Inspect git status, current branch, and recent commits.
+3. Identify the approved task and its acceptance criteria.
+4. Do not infer unfinished work from an old conversation.
+5. If repository state and task description disagree, stop and ask.
+6. Propose an operative plan before modifying code.
+
+Before completing a task:
+1. Run the applicable deterministic verification script.
+2. Record actual commands, environment/image version, and outcomes.
+3. Review the complete Git diff.
+4. Update current-state documentation when behavior or status changed.
+5. Preserve dated study evidence separately from current-state guidance.
+6. Report remaining failures and scientific uncertainties explicitly.
+
 ## Purpose and current milestone
 
 This repository develops a crystallite-based, small-strain thermo-mechanical model for nuclear graphite. Its purpose is to connect crystallite anisotropy, orientational disorder, residual stress, and an idealized basal-crack damage variable to homogenized response. The longer-term research program includes crystallites, domains, and binder/filler-scale structure; this repository currently implements the crystallite-scale model.
@@ -9,7 +27,7 @@ The current implementations are:
 - `resolvedGrainCooling/`: randomly oriented crystallites with scalar damage and periodic, free-surface, or zero-displacement boundary conditions.
 - `hopgCooling/`: a fork for HOPG-like mosaic orientations; its tracked baseline is damage-free thermoelasticity.
 
-The next planned engineering task is a **behavior-preserving refactor**: remove redundant or stale AI commentary, normalize structure, and reduce maintenance hazards without changing equations, parameters, numerical algorithms, or outputs. Scientific changes require a separate approved task.
+The resolved-grain **behavior-preserving modular refactor** was completed on 2026-11-18: implementation is split into focused modules, comments are audited, and focused Doxygen documentation and nine-case A/B regression coverage are available. HOPG remains a separate single-file implementation. Sharing code between the forks is a separate architectural task; scientific changes require separate approval.
 
 This current-state documentation was audited against archived commit `67dd766` (2026-10-12). No build or run was performed during the documentation audit because the environment lacked CMake, Docker, and deal.II; archived verification data are identified as such.
 
@@ -17,7 +35,7 @@ This current-state documentation was audited against archived commit `67dd766` (
 
 Use information in this order:
 
-1. The relevant `main.cpp` and exact run `input.json` determine actual behavior.
+1. The relevant program entry point and module sources (`include/` and `src/` where present), together with the exact run `input.json`, determine actual behavior.
 2. This file and `docs/` are the curated current-state explanation and operational guide.
 3. Folder READMEs, derivations, optimization reports, and `results/` are dated evidence or design history. They are not automatically current instructions.
 
@@ -84,7 +102,7 @@ The tracked HOPG baseline has 64,000 cells and is not a small smoke test. Use re
 - The user and supervisors choose scientific priorities. The architect turns them into operative tasks and checks scientific/architectural consistency. Implementation starts only after the user approves the operative task.
 - Review changes as focused Git diffs. Separate behavior-preserving edits from constitutive, material-data, boundary-condition, and solver changes.
 - Actively identify contradictions and uncertain assumptions. When project intent is missing, ask the user rather than inventing a purpose or silently selecting new physics.
-- `hopgCooling/main.cpp` and `resolvedGrainCooling/main.cpp` are duplicated forks. A shared bug fix must be checked deliberately in both; do not assume editing one updates the other. Deduplication itself is an architectural task requiring approval.
+- `hopgCooling/main.cpp` and the resolved-grain modules under `resolvedGrainCooling/include/` and `src/` are independent implementations derived from a duplicated fork. A shared bug fix must be checked deliberately in both; do not assume editing one updates the other. Deduplication itself is an architectural task requiring approval.
 - MMS and uniaxial tests are also separate source copies. Passing them does not automatically test later edits in either production fork.
 - Preserve exact input, Git revision, seed, mesh resolution, solver options, and output files with every scientific run.
 - Treat warnings about high damage, non-convergence, fit-range violations, or stale homogenized stiffness as validity issues, not cosmetic log messages.

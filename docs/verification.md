@@ -2,15 +2,96 @@
 
 ## Status at a glance
 
-The archive contains useful PDE and damage-kinetics verification evidence, but not a unified automated test suite for the current production sources.
+The repository has separate PDE and damage-kinetics verification programs plus an explicit resource-limited regression runner. Their coverage is complementary; there is no single test suite that validates every production configuration.
 
 - `mmsSandbox/` verifies a separate zero-damage, temperature-independent thermoelastic implementation against a manufactured solution.
 - `uniaxialDamageTest/` verifies a separate homogeneous displacement-controlled damage implementation against an independent scalar ODE solution and an algebraic stress relation.
 - Additional resolved-grain checks and solver comparisons are documented in dated README/results files.
 - HOPG mosaic studies provide physical/code evidence for a particular configuration, not general validation against experiments.
-- No compilation or new run was performed during the documentation audit on 2026-11-16 because the environment lacked CMake, Docker, and deal.II. All numerical values below come from archived files, not a fresh run.
+- No compilation or new run was performed during the documentation audit on 2026-11-16 because the environment lacked CMake, Docker, and deal.II. Dated fresh local runs are identified separately from archived results below.
 
-Because the verification programs and production programs are separate source copies, a passing archived test does not automatically cover later changes in `resolvedGrainCooling/main.cpp` or `hopgCooling/main.cpp`.
+Because the verification programs and production programs are separate source copies, a passing archived test does not automatically cover later changes in the resolved-grain modules or `hopgCooling/main.cpp`.
+
+## Fresh local bootstrap: 2026-11-17
+
+This is new, dated local evidence, separate from the archived results below. The final unified gate passed at Git revision `8536acf704b18734fb5032841e38bdfe1cf160b9` with the new uncommitted workflow files and the pre-existing uncommitted `AGENTS.md` session-protocol edit. No C++ source, tracked input, or archived result was changed.
+
+Environment recorded inside the existing container:
+
+- Ubuntu 22.04.5 LTS, GCC 11.4.0, CMake 3.28.3, and Python 3.10.12;
+- deal.II `9.9.0-pre`, short revision `20f665c7ab`, installed at `/usr/local`; this satisfies the CMake minimum of 9.8.0 and is not a 9.8.0 build;
+- MPI, TBB, UMFPACK, Trilinos, and Trilinos ML enabled;
+- NumPy 1.21.5, SciPy 1.8.0, and Matplotlib 3.5.1.
+
+Actual final command:
+
+```bash
+./scripts/verify.sh env build mms-small uniaxial-small smoke-resolved smoke-hopg
+```
+
+Evidence: `verification-runs/20261117T141315.087543Z-8536acf704b1-1806/`. This directory is intentionally Git-ignored local evidence; its `summary.json`, `manifest.json`, `commands.json`, logs, exact inputs, CSV files, and plots are the primary run record.
+
+| Target | Fresh result |
+|---|---|
+| Four builds | PASS, Release; incremental builds in the final gate, after successful clean builds in the earlier bootstrap invocation |
+| `mms-small` | PASS in 22.2 s; 20 completed rows, 1,000/8,000 cells; L2/H1/L-infinity rates 1.9996/1.0196/1.9674; largest relative final-error difference from the archived rows was 0.000324% |
+| `uniaxial-small` | PASS in 51.4 s; 10/20/40 steps completed; final damage 0.687177/0.688889/0.689688; fitted order 1.0779; maximum spatial spread 6.06448e-12; maximum algebraic stress mismatch 0.00211972 Pa |
+| `smoke-resolved` | PASS in 2.5 s; 1,000 cells, two converged steps to 1960 K; consistent CSV/PVD output; zero damage in this short interval |
+| `smoke-hopg` | PASS in 3.8 s; 1,000 cells, two steps to 2400 K; consistent macroscopic/stress-statistics CSV and PVD output; damage identically zero |
+
+The final run used two build jobs, two solver threads, and sequential tests. Its largest-child RSS high-water mark was 248,396 KiB; this is not a measurement of aggregate host memory use. The earlier clean-build invocation reached 1,720,580 KiB during compilation.
+
+Explicitly skipped under the approved resource limit:
+
+- the 64,000-cell MMS level;
+- uniaxial step sizes 0.0125 and 0.00625 (80 and 160 steps);
+- all large production baselines and refined damage studies.
+
+These fresh results cover only the reduced configurations listed here. The resolved-grain smoke interval did not activate damage, and neither smoke test is experimental validation or a replacement for the copied-source MMS/uniaxial checks.
+
+## Current-material active-damage baseline: 2026-11-18
+
+The pre-refactor resolved-grain baseline is reproducible with:
+
+```bash
+./scripts/verify.sh damage-resolved
+```
+
+Evidence: `verification-runs/20261118T093735.134221Z-8536acf704b1-29756/`, at Git revision `8536acf704b18734fb5032841e38bdfe1cf160b9` with uncommitted workflow changes. The isolated input preserves the tracked periodic 1,000-cell configuration, seed, current Polewczyk elastic fits, constant secant CTEs, solver settings, and ten 20 K steps from 2000 to 1800 K. Its only scientific change is `StressThreshold = 60 MPa`, approved to activate damage with the current materials; the tracked input remains at 200 MPa.
+
+The target passed in 12.7 s using two threads, with a 225,088 KiB largest-child RSS high-water mark. All ten steps converged without warnings, all ten PVD fields and the macroscopic CSV were consistent, no protected files changed, and damage was finite and monotone. Damage first appeared at 1860 K; at 1800 K the mean and maximum damage were 0.117217 and 0.166286. The 60 MPa threshold is a numerical baseline choice, not a calibration or experimental validation.
+
+An initial otherwise-identical 200 MPa run also completed all ten steps but had zero damage, with maximum local `sigma_33 = 88.98 MPa`; its evidence is retained in `verification-runs/20261118T093504.373533Z-8536acf704b1-28404/`. The archived active-damage run under `resolvedGrainCooling/results/bc-resolution-sweep-cte-qn/periodic_01cpg_seed20260905/` used both constant CTEs and older constant elasticity, so it is historical context rather than a numerical regression target for this new baseline. The run manifest, exact input, commands, logs, and numerical artifacts hold the detailed evidence; this section is the compact current-state index.
+
+## Resolved-grain modular refactor A/B: 2026-11-18
+
+The accepted pre-refactor reference is `verification-runs/20261118T112247.213937Z-8536acf704b1-84891/`, generated at Git revision `8536acf704b18734fb5032841e38bdfe1cf160b9` with:
+
+```bash
+./scripts/verify.sh ab-resolved
+```
+
+All nine reference cases passed in 68.968 s with two solver threads, sequential tests, and an 8 GiB per-process address-space limit. Its largest-child RSS high-water mark was 288,572 KiB. No protected files changed.
+
+The final modular source was built and compared against that unchanged reference with:
+
+```bash
+./scripts/verify.sh build-resolved ab-resolved \
+  --reference-run verification-runs/20261118T112247.213937Z-8536acf704b1-84891
+```
+
+Final evidence: `verification-runs/20261118T114600.232456Z-8536acf704b1-97289/`. The Release build and all nine cases passed in 95.9 s total. The combined invocation's largest-child RSS was 1,295,340 KiB during compilation; the preceding run-only modular comparison peaked at 289,000 KiB. The run used the same resources and deal.II installation as the reference. No protected input or archived result changed.
+
+Across all cases, the comparator covered 34 macroscopic CSV rows and 27 VTU fields. Every CSV value matched exactly at the written precision (`max_scaled_csv_difference = 0`), integer columns and convergence/macroscopic iteration histories were identical, PVD sequences matched, and every VTU byte matched except the independently varying deal.II generation timestamp line. Both active-damage cases ended at mean/max damage `0.11721722717` / `0.16628639651`; the refinement case completed with 8,000 cells. The uniform-orientation case also passed its independent analytical `Ebar` and Kelvin `Cbar` checks.
+
+Doxygen 1.9.1 documentation was generated successfully with warnings treated as errors:
+
+```bash
+cd resolvedGrainCooling
+cmake --build build --target docs
+```
+
+The resulting HTML is under `resolvedGrainCooling/build/doxygen/html/`. Graphviz output is disabled because `dot` is not installed. This gate covers the refactor configurations only: HOPG and the separate MMS/uniaxial programs were not changed or rerun, large production studies remain excluded, and no experimental validation or new physical verification is implied.
 
 ## MMS: zero-damage thermoelastic PDE
 

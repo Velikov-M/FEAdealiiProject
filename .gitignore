@@ -7,3 +7,4 @@ mySSHkey
 mySSHkey.pub
 __pycache__/
 *.pyc
+/verification-runs/

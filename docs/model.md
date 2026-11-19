@@ -2,7 +2,7 @@
 
 ## Scope
 
-This document describes the formulation implemented in `resolvedGrainCooling/main.cpp` and `hopgCooling/main.cpp`. It is not a claim that the idealizations are sufficient for nuclear graphite generally. The model is a three-dimensional, small-strain, displacement-based finite-element model with local scalar damage.
+This document describes the formulation implemented in `resolvedGrainCooling/main.cpp` together with `resolvedGrainCooling/include/resolved_grain/` and `resolvedGrainCooling/src/`, and in the independent `hopgCooling/main.cpp` fork. It is not a claim that the idealizations are sufficient for nuclear graphite generally. The model is a three-dimensional, small-strain, displacement-based finite-element model with local scalar damage.
 
 ## Kinematics and constitutive law
 
