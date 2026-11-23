@@ -18,7 +18,6 @@ namespace StepCooling
     , timer(std::cout, TimerOutput::summary, TimerOutput::wall_times)
   {};
 
-  /** Strip Neper orientation metadata that GridIn::read_msh() does not consume. */
   template <int dim>
   std::istringstream ElasticProblem<dim>::parseMSHandPrepareStream(std::string mshFileName)
   {
@@ -95,10 +94,6 @@ namespace StepCooling
     return rotmatOrientationCell[cellId - 1];
   }
 
-  /** Reinitialize DoFs, damage, constraints, sparsity, and vectors for the current mesh.
-   *
-   * Damage is reset to zero; quadrature-point data are not transferred between refinement cycles.
-   */
   template <int dim>
   void ElasticProblem<dim>::setup_system()
   {
@@ -265,11 +260,6 @@ namespace StepCooling
               << ", z=" << counts[4] << std::endl;
   }
 
-  /** Apply the 3-2-1 corner support for a traction-free body.
-   *
-   * Six independent scalar constraints remove three translations and three rotations. No other
-   * displacement is restrained, because additional reactions would invalidate free cooling.
-   */
   template <int dim>
   void ElasticProblem<dim>::constrainRigidBodyModes()
   {
@@ -448,6 +438,132 @@ namespace StepCooling
     triangulation.execute_coarsening_and_refinement();
     assignGrains();   // pure function of position, so the grain field is unchanged by refining
     setup_system();
+  }
+
+  template <int dim>
+  void ElasticProblem<dim>::prepareRefinementCycle(const unsigned int refinementCycle)
+  {
+    if (refinementCycle == 0)
+    {
+      setup_system();
+      return;
+    }
+
+    const std::string refinementStrategy =
+      prm.get({"MeshRefinementParameters"}, "RefinementStrategy");
+    if (refinementStrategy == "uniform")
+    {
+      triangulation.refine_global(1);
+      assignGrains();
+      setup_system();
+    }
+    else
+    {
+      const double fractionToRefine =
+        prm.get_double({"MeshRefinementParameters"}, "FractionToRefine");
+      const double fractionToCoarsen =
+        prm.get_double({"MeshRefinementParameters"}, "FractionToCoarsen");
+      refine_grid(fractionToRefine, fractionToCoarsen);
+    }
+  }
+
+  template <int dim>
+  void ElasticProblem<dim>::initializeMicrostructure()
+  {
+    std::string mshFileName = prm.get({"InputFiles"}, "MeshFile");
+    std::string cellToMaterialFileName = prm.get({"InputFiles"}, "CellToMaterialFile");
+    GridIn <dim> grid_in;
+    grid_in.attach_triangulation(this->triangulation);
+    std::ifstream input_file(mshFileName);
+    auto mshStream = parseMSHandPrepareStream(mshFileName);
+    grid_in.read_msh(mshStream);
+    parse_cellToMaterial_data(cellToMaterialFileName);
+
+    // Grain identity is a 1-based material_id inherited by children on refinement. Orientations
+    // are generated per grain below, replacing any metadata read from the mesh.
+    const bool uniformOrientation = prm.get_bool({"BoundaryConditions"}, "UniformOrientation");
+    const bool useOrientationFile = prm.get_bool({"BoundaryConditions"}, "UseOrientationFile");
+    if (uniformOrientation && useOrientationFile)
+      throw std::runtime_error("UniformOrientation and UseOrientationFile cannot both be true");
+    const unsigned int orientationSeed =
+      prm.get_integer({"BoundaryConditions"}, "OrientationSeed");
+    // Boundary IDs must be assigned on the coarse mesh before initial refinement.
+    const unsigned int initialRefinements =
+      prm.get_integer({"MeshRefinementParameters"}, "InitialGlobalRefinements");
+    assignBoundaryIds();
+    if (initialRefinements > 0)
+      triangulation.refine_global(initialRefinements);
+
+    grainsPerSide = prm.get_integer({"BoundaryConditions"}, "GrainsPerSide");
+    const unsigned int nGrains = grainsPerSide * grainsPerSide * grainsPerSide;
+    if (uniformOrientation)
+      std::cout << "*** UniformOrientation smoke test: every grain identically oriented. "
+                   "Expect Cbar = C, u~ = 0, sigma = 0 pointwise. ***" << std::endl;
+
+    // Generate one orientation per grain; positional grain assignment preserves them on refinement.
+    std::mt19937_64 rng(orientationSeed);
+    rotmatOrientationCell.clear();
+    rotmatOrientationCell.reserve(nGrains);
+    std::ifstream orientationInput;
+    if (useOrientationFile)
+      {
+        const std::string fileName = prm.get({"InputFiles"}, "OrientationFile");
+        orientationInput.open(fileName);
+        if (!orientationInput)
+          throw std::runtime_error("cannot open OrientationFile: " + fileName);
+      }
+    for (unsigned int g = 0; g < nGrains; ++g)
+      {
+        Tensor<2, dim> orientation;
+        if (uniformOrientation)
+          orientation = Tensor<2, dim>(unit_symmetric_tensor<dim>());
+        else if (useOrientationFile)
+          {
+            for (unsigned int i = 0; i < dim; ++i)
+              for (unsigned int j = 0; j < dim; ++j)
+                if (!(orientationInput >> orientation[i][j]))
+                  throw std::runtime_error(
+                    "OrientationFile must contain 9 numeric entries per grain");
+            Tensor<2, dim> identity;
+            for (unsigned int d = 0; d < dim; ++d)
+              identity[d][d] = 1.0;
+            if ((orientation * transpose(orientation) - identity).norm() > 1e-10 ||
+                std::abs(determinant(orientation) - 1.0) > 1e-10)
+              throw std::runtime_error("OrientationFile contains a non-orthonormal rotation");
+          }
+        else
+          orientation = randomOrientationUniformOnSphere<dim>(rng);
+        rotmatOrientationCell.push_back(orientation);
+      }
+
+    assignGrains();
+
+    // Reject grain counts that cannot be represented by this build's material_id type.
+    if (nGrains >= numbers::invalid_material_id)
+      throw std::runtime_error(
+        "GrainsPerSide^3 = " + std::to_string(nGrains) + " grains exceeds what "
+        "types::material_id can represent on this deal.II build.");
+
+    // Report sampling moments as a diagnostic for the orientation distribution.
+    {
+      Tensor<1, dim> meanAxis;
+      double meanCzSquared = 0.0;
+      for (const auto &R : rotmatOrientationCell)
+      {
+        for (unsigned int d = 0; d < dim; ++d) meanAxis[d] += R[dim-1][d];
+        meanCzSquared += R[dim-1][dim-1] * R[dim-1][dim-1];
+      }
+      meanAxis /= rotmatOrientationCell.size();
+      meanCzSquared /= rotmatOrientationCell.size();
+      std::cout << "Orientations: seed=" << orientationSeed
+                << ", |mean c-axis|=" << meanAxis.norm();
+      if (!uniformOrientation && !useOrientationFile)
+        std::cout << " (random expectation ~0)";
+      std::cout << ", mean c_z^2=" << meanCzSquared;
+      if (!uniformOrientation && !useOrientationFile)
+        std::cout << " (random expectation ~0.3333)";
+      std::cout << std::endl;
+    }
   }
 
   template class ElasticProblem<3>;

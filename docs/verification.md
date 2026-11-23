@@ -1,99 +1,129 @@
-# Verification status and regression expectations
+# Verification strategy and regression expectations
 
-## Status at a glance
+## Purpose and current coverage
+
+This document defines what to verify, how each test works, its acceptance criteria, and the limits of the resulting evidence. Dated run outcomes, software environments, timings, memory measurements, and archived numerical tables belong in [studies.md](studies.md#verification-run-history). Raw commands, inputs, logs, and outputs are held in each `verification-runs/<run-id>/` directory. Do not append new run narratives to this guide.
 
 The repository has separate PDE and damage-kinetics verification programs plus an explicit resource-limited regression runner. Their coverage is complementary; there is no single test suite that validates every production configuration.
 
+- `./scripts/verify.sh check` is the unified required gate. It includes production-linked unit and MMS tests, seven analytical resolved-grain cases, reduced copied-source MMS/uniaxial suites, an active-damage resolved-grain history, and HOPG smoke coverage. The exact setups and pass criteria are listed in [Implemented tests](#implemented-tests-setup-oracle-and-pass-criteria).
 - `mmsSandbox/` verifies a separate zero-damage, temperature-independent thermoelastic implementation against a manufactured solution.
 - `uniaxialDamageTest/` verifies a separate homogeneous displacement-controlled damage implementation against an independent scalar ODE solution and an algebraic stress relation.
-- Additional resolved-grain checks and solver comparisons are documented in dated README/results files.
+- Additional resolved-grain checks, solver comparisons, and physical studies are indexed in [studies.md](studies.md).
 - HOPG mosaic studies provide physical/code evidence for a particular configuration, not general validation against experiments.
-- No compilation or new run was performed during the documentation audit on 2026-11-16 because the environment lacked CMake, Docker, and deal.II. Dated fresh local runs are identified separately from archived results below.
 
-Because the verification programs and production programs are separate source copies, a passing archived test does not automatically cover later changes in the resolved-grain modules or `hopgCooling/main.cpp`.
+Because the copied verification programs and production programs are separate source copies, a passing copied-source test does not automatically cover later changes in the resolved-grain modules or `hopgCooling/main.cpp`. Production-linked tests have their own explicitly stated limits below.
 
-## Fresh local bootstrap: 2026-11-17
+The latest recorded full gate passed all 18 required targets on 2026-11-19. See the [dated summary and source revision](studies.md#unified-production-linked-verification-2026-11-19) and `verification-runs/20261119T140812.883855Z-964c60474f24-170195/`. This is historical evidence for that recorded source state, not a substitute for rerunning `check` after new changes.
 
-This is new, dated local evidence, separate from the archived results below. The final unified gate passed at Git revision `8536acf704b18734fb5032841e38bdfe1cf160b9` with the new uncommitted workflow files and the pre-existing uncommitted `AGENTS.md` session-protocol edit. No C++ source, tracked input, or archived result was changed.
+## Implemented tests: setup, oracle, and pass criteria
 
-Environment recorded inside the existing container:
+This section is the test-by-test reference for the current suite. Run all required targets with `./scripts/verify.sh check`, or select a subset such as `unit-resolved`, `production-mms-resolved`, or `analytical-resolved`. The executable exit status is only one part of a pass: the runner also applies the numerical and artifact checks below.
 
-- Ubuntu 22.04.5 LTS, GCC 11.4.0, CMake 3.28.3, and Python 3.10.12;
-- deal.II `9.9.0-pre`, short revision `20f665c7ab`, installed at `/usr/local`; this satisfies the CMake minimum of 9.8.0 and is not a 9.8.0 build;
-- MPI, TBB, UMFPACK, Trilinos, and Trilinos ML enabled;
-- NumPy 1.21.5, SciPy 1.8.0, and Matplotlib 3.5.1.
+There are three deliberately different kinds of evidence:
 
-Actual final command:
+- **Unit and analytical tests** compare against mathematical identities or independently constructed references.
+- **MMS convergence tests** compare against a manufactured exact solution and require the expected refinement rates.
+- **A/B tests** compare against accepted outputs from an earlier executable. They detect behavior changes but are not independent proof that the original equations were correct.
 
-```bash
-./scripts/verify.sh env build mms-small uniaxial-small smoke-resolved smoke-hopg
-```
+### Production-linked GoogleTest unit tests
 
-Evidence: `verification-runs/20261117T141315.087543Z-8536acf704b1-1806/`. This directory is intentionally Git-ignored local evidence; its `summary.json`, `manifest.json`, `commands.json`, logs, exact inputs, CSV files, and plots are the primary run record.
+`unit-resolved` runs `resolvedGrainCooling/build/resolved_grain_tests`. The executable links the same `resolved_grain` static library as production. The runner requires at least one test and rejects every failure or skipped test; the current suite contains exactly 14 cases.
 
-| Target | Fresh result |
-|---|---|
-| Four builds | PASS, Release; incremental builds in the final gate, after successful clean builds in the earlier bootstrap invocation |
-| `mms-small` | PASS in 22.2 s; 20 completed rows, 1,000/8,000 cells; L2/H1/L-infinity rates 1.9996/1.0196/1.9674; largest relative final-error difference from the archived rows was 0.000324% |
-| `uniaxial-small` | PASS in 51.4 s; 10/20/40 steps completed; final damage 0.687177/0.688889/0.689688; fitted order 1.0779; maximum spatial spread 6.06448e-12; maximum algebraic stress mismatch 0.00211972 Pa |
-| `smoke-resolved` | PASS in 2.5 s; 1,000 cells, two converged steps to 1960 K; consistent CSV/PVD output; zero damage in this short interval |
-| `smoke-hopg` | PASS in 3.8 s; 1,000 cells, two steps to 2400 K; consistent macroscopic/stress-statistics CSV and PVD output; damage identically zero |
+The independent symbolic constants are generated at build time by `resolvedGrainCooling/tests/symbolic/generate_oracles.py`. SymPy uses rational input values and direct index notation rather than calling the C++ material or damage implementations. The generated header is placed under the build directory and is not a tracked source file.
 
-The final run used two build jobs, two solver threads, and sequential tests. Its largest-child RSS high-water mark was 248,396 KiB; this is not a measurement of aggregate host memory use. The earlier clean-build invocation reached 1,720,580 KiB during compilation.
+**Material response and stability (3 cases):**
 
-Explicitly skipped under the approved resource limit:
+- `Material.ThermoelasticStressMatchesIndependentSymPyIndexNotation` evaluates all six independent stress components at 1800 K, damage 0.2, and a nonspecial symmetric strain containing all normal and shear components. The reference independently forms the secant thermal strain and transversely isotropic stress, including axial damage coupling. Every component must agree within `2e-13 * max(1, |reference|)`.
+- `Material.KelvinTensorPassesPhysicalComponentAndSymmetryChecks` checks the transverse-isotropy identities and symmetries, `C_2323 = C44`, and `C_1212 = (C11-C12)/2`. This guards the rank-four tensor components used to construct the Kelvin matrix, whose shear diagonal is `2*C44`, `2*C44`, and `C11-C12`.
+- `Material.PositiveDefinitenessLimitMatchesSymbolicDeterminant` compares the computed critical damage with the independent expression `1 - 2*C13^2/(C33*(C11+C12))` to `2e-15`. It also requires the baseline material to be positive definite at damage 0 and 0.9, not positive definite at 0.999, and to throw from the explicit physical-validity check at 0.999.
 
-- the 64,000-cell MMS level;
-- uniaxial step sizes 0.0125 and 0.00625 (80 and 160 steps);
-- all large production baselines and refined damage studies.
+**Standalone backward-Euler damage law (5 cases):**
 
-These fresh results cover only the reduced configurations listed here. The resolved-grain smoke interval did not activate damage, and neither smoke test is experimental validation or a replacement for the copied-source MMS/uniaxial checks.
+- `DamageLaw.CoupledStressCounterexampleFindsSmallerRoot` uses a stress that changes with damage, `sigma(omega) = 1.3 - 0.2*omega` in nondimensional units. SymPy converts the coupled residual to a polynomial and finds two admissible roots. The solver must return the smaller root to `2e-12`, return a value below the second root, and satisfy the original nonlinear residual to `1e-11`. This specifically covers the case missed by the old frozen-stress partition.
+- `DamageLaw.ConstantStressLinearExponentMatchesSymbolicRoot` uses old damage 0.1, constant stress 3, threshold 2, prefactor 0.2, exponent `m=1`, and unit time step. The result must match the smaller independent symbolic root to `2e-12`.
+- `DamageLaw.SubcriticalAndCompressiveStressDoNotEvolveDamage` requires exactly unchanged damage for stress equal to the threshold and for compressive stress.
+- `DamageLaw.ZeroPrefactorIsAnExactNoEvolutionCase` requires exactly unchanged damage when the kinetic prefactor is zero, even above threshold.
+- `DamageLaw.RejectsInvalidParametersAndUnbracketedSteps` requires exceptions for a zero time step, a zero kinetic exponent, and a very large step/prefactor for which no admissible root is bracketed. A failed root solve must not silently return a damage value.
 
-## Current-material active-damage baseline: 2026-11-18
+**Orientation construction and sampling (2 cases):**
 
-The pre-refactor resolved-grain baseline is reproducible with:
+- `Orientations.BasisIsOrthonormalIncludingCoordinateAxes` tests the three coordinate axes, the negative z-axis, and a generic unit c-axis. For each, it requires `R*R^T = I`, `det(R) = 1`, and equality of the third matrix row with the requested global c-axis. The coordinate-axis cases exercise the basis-construction degeneracies.
+- `Orientations.SamplingIsReproducibleAndReturnsUnitAxes` generates 32 orientations from each of two `mt19937_64` generators seeded with 12345. Corresponding matrices must be bit-for-bit equal, every sampled c-axis must have unit norm, and every frame must pass the orthonormality/determinant checks. This tests reproducibility and valid frames, not the statistical uniformity of a large sample.
 
-```bash
-./scripts/verify.sh damage-resolved
-```
+**Convergence scaling (4 cases):**
 
-Evidence: `verification-runs/20261118T093735.134221Z-8536acf704b1-29756/`, at Git revision `8536acf704b18734fb5032841e38bdfe1cf160b9` with uncommitted workflow changes. The isolated input preserves the tracked periodic 1,000-cell configuration, seed, current Polewczyk elastic fits, constant secant CTEs, solver settings, and ten 20 K steps from 2000 to 1800 K. Its only scientific change is `StressThreshold = 60 MPa`, approved to activate damage with the current materials; the tracked input remains at 200 MPa.
+- `ConvergenceMeasure.AcceptsExactZeroResponse` requires the `0/0` case to return exactly zero, so an exact zero solution is converged rather than NaN.
+- `ConvergenceMeasure.RejectsNonzeroIncrementAtZeroScale` requires a nonzero increment with zero scale to return infinity.
+- `ConvergenceMeasure.UsesRelativeScaleAwayFromZero` requires increment 2 and scale 4 to return exactly 0.5.
+- `ConvergenceMeasure.RejectsNonFiniteAndNegativeInputs` requires NaN increments and negative increments or scales to return infinity rather than be accepted as converged.
 
-The target passed in 12.7 s using two threads, with a 225,088 KiB largest-child RSS high-water mark. All ten steps converged without warnings, all ten PVD fields and the macroscopic CSV were consistent, no protected files changed, and damage was finite and monotone. Damage first appeared at 1860 K; at 1800 K the mean and maximum damage were 0.117217 and 0.166286. The 60 MPa threshold is a numerical baseline choice, not a calibration or experimental validation.
+These are focused kernel tests. They do not by themselves test complete FE assembly, boundary conditions, coupled production iterations, or random-microstructure statistics.
 
-An initial otherwise-identical 200 MPa run also completed all ten steps but had zero damage, with maximum local `sigma_33 = 88.98 MPa`; its evidence is retained in `verification-runs/20261118T093504.373533Z-8536acf704b1-28404/`. The archived active-damage run under `resolvedGrainCooling/results/bc-resolution-sweep-cte-qn/periodic_01cpg_seed20260905/` used both constant CTEs and older constant elasticity, so it is historical context rather than a numerical regression target for this new baseline. The run manifest, exact input, commands, logs, and numerical artifacts hold the detailed evidence; this section is the compact current-state index.
+### Production-source temperature-dependent MMS
 
-## Resolved-grain modular refactor A/B: 2026-11-18
+`production-mms-resolved` runs the executable built from `resolvedGrainCooling/tests/integration/production_mms.cpp` by the `build-resolved` target. The executable links the production `resolved_grain` library and calls the same `assembleCell()` kernel as the cooling model. It does not use the copied `mmsSandbox` implementation.
 
-The accepted pre-refactor reference is `verification-runs/20261118T112247.213937Z-8536acf704b1-84891/`, generated at Git revision `8536acf704b18734fb5032841e38bdfe1cf160b9` with:
+On the unit cube, SymPy prescribes the displacement amplitude `A = 1e-6 m` and
 
-```bash
-./scripts/verify.sh ab-resolved
-```
+\[
+\begin{aligned}
+u_x &= A\sin(\pi x)\sin(\pi y)\sin(\pi z),\\
+u_y &= A\sin(\pi x)\sin(2\pi y)\sin(\pi z),\\
+u_z &= A\sin(\pi x)\sin(\pi y)\sin(2\pi z),\\
+T(x,y,z) &= 1900 + 20x + 10y + 5z\ \text{K}.
+\end{aligned}
+\]
 
-All nine reference cases passed in 68.968 s with two solver threads, sequential tests, and an 8 GiB per-process address-space limit. Its largest-child RSS high-water mark was 288,572 KiB. No protected files changed.
+The stress-free reference temperature is 2000 K. The test uses nonzero temperature dependence for every elastic constant and both secant CTE components, with zero damage. SymPy differentiates the displacement to obtain the strain, forms `sigma = C(T):(sym(grad(u)) - alpha_sec(T)*(T-2000))` in index notation, and generates the body force `b = -div(sigma)`. Thus the forcing includes derivatives of both the mechanical displacement stress and the spatially varying thermoelastic stress. Analytic displacement gradients are also supplied to the error calculation instead of relying on a parser's derivative approximation.
 
-The final modular source was built and compared against that unchanged reference with:
+The numerical problem uses vector Q1 elements, full Dirichlet boundary data from the exact displacement, two-point Gauss quadrature per direction for assembly, and a direct UMFPACK solve. Errors are integrated with four-point Gauss quadrature per direction. Global refinements 2, 3, and 4 produce exactly 64, 512, and 4096 cells.
 
-```bash
-./scripts/verify.sh build-resolved ab-resolved \
-  --reference-run verification-runs/20261118T112247.213937Z-8536acf704b1-84891
-```
+For each norm, the observed rate between successive meshes is `log2(error_coarse/error_fine)`. The runner requires:
 
-Final evidence: `verification-runs/20261118T114600.232456Z-8536acf704b1-97289/`. The Release build and all nine cases passed in 95.9 s total. The combined invocation's largest-child RSS was 1,295,340 KiB during compilation; the preceding run-only modular comparison peaked at 289,000 KiB. The run used the same resources and deal.II installation as the reference. No protected input or archived result changed.
+- finite, strictly positive L2 and H1-seminorm errors at every level;
+- both successive L2 rates in `[1.8, 2.2]`;
+- both successive H1 rates in `[0.8, 1.2]`;
+- exactly the three expected cell counts and a successful solver process.
 
-Across all cases, the comparator covered 34 macroscopic CSV rows and 27 VTU fields. Every CSV value matched exactly at the written precision (`max_scaled_csv_difference = 0`), integer columns and convergence/macroscopic iteration histories were identical, PVD sequences matched, and every VTU byte matched except the independently varying deal.II generation timestamp line. Both active-damage cases ended at mean/max damage `0.11721722717` / `0.16628639651`; the refinement case completed with 8,000 cells. The uniform-orientation case also passed its independent analytical `Ebar` and Kelvin `Cbar` checks.
+Measured errors and rates from the latest full run are recorded in the [dated run summary](studies.md#unified-production-linked-verification-2026-11-19). This test verifies the shared cell stiffness, thermal load, body-force load, temperature-dependent constitutive evaluation, and Dirichlet solve for the manufactured problem. It does not exercise damage, periodic constraints, homogenization, random orientations, or the production cooling driver with a spatially varying temperature.
 
-Doxygen 1.9.1 documentation was generated successfully with warnings treated as errors:
+### Analytical tests through the production executable
 
-```bash
-cd resolvedGrainCooling
-cmake --build build --target docs
-```
+`analytical-resolved` selects seven targets. Unless overridden below, each uses the tracked resolved-grain material and solver configuration, 1,000 cells with one element per crystallite, and two 20 K cooling steps from 2000 to 1960 K. These targets execute the production `main` and therefore cover mesh/grain setup, constraints, assembly, solve, homogenization where applicable, and output.
 
-The resulting HTML is under `resolvedGrainCooling/build/doxygen/html/`. Graphviz output is disabled because `dot` is not installed. This gate covers the refactor configurations only: HOPG and the separate MMS/uniaxial programs were not changed or rerun, large production studies remain excluded, and no experimental validation or new physical verification is implied.
+For every production analytical target, the runner first requires a warning-free/converged log, the expected cell count and two CSV rows, finite CSV values, the requested final temperature, damage in `[0, 0.999]` and monotone to `1e-12`, and existing nonempty fields referenced by the PVD. The target-specific checks are:
 
-## MMS: zero-damage thermoelastic PDE
+- **`uniform-resolved` — periodic homogeneous crystal.** Every grain has identity global-to-local rotation. The exact response is fluctuation-free thermal expansion with zero mean stress. At every temperature, the runner requires `Ebar_11 = Ebar_22 = alpha11_sec(T)*(T-T0)`, `Ebar_33 = alpha33_sec(T)*(T-T0)`, and zero macroscopic shear. Normal strains use relative tolerance `1e-8` and absolute tolerance `1e-11`; shear magnitudes must not exceed `1e-11`. It also checks `meanStressNorm <= 1e-3 Pa` and all six Kelvin homogenized-stiffness diagonal entries against `[C11, C11, C33, 2*C44, 2*C44, C11-C12]`, using relative tolerance `1e-7` and absolute tolerance `1e-3 Pa`.
+- **`clamped-uniform-resolved` — zero-displacement homogeneous crystal.** With total strain zero, the independent diagonal stress reference is `sigma_11 = sigma_22 = -((C11+C12)*alpha11 + C13*alpha33)*(T-T0)` and `sigma_33 = -(2*C13*alpha11 + C33*alpha33)*(T-T0)`. All material values are evaluated at the row temperature. The reported mean-stress norm must equal `sqrt(2*sigma_11^2 + sigma_33^2)` with relative tolerance `1e-7` and absolute tolerance `1e-3 Pa`.
+- **`free-uniform-resolved` — traction-free homogeneous crystal.** The production free-surface path is run with the direct solver. Its independent assertion is `meanStressNorm <= 1e-3 Pa` at both temperatures. The periodic uniform test above supplies the more detailed free-thermal-strain and stiffness assertions.
+- **`laminate-resolved` — two-phase periodic laminate.** An orientation file prescribes equal-volume alternating layers normal to global x. Phase A has local axes `(x,y,z)`; phase B has local axes `(y,z,x)`, so their c-axes are orthogonal. Exact periodic condensation and the direct solver are used. For each temperature, SymPy independently imposes compatible layer-parallel strains `E_y` and `E_z`, zero normal traction in each phase, and zero volume-average `sigma_yy` and `sigma_zz`. It then computes all three macroscopic normal strains, including the average of the different layer-normal strains. The three `Ebar` values must agree with relative tolerance `1e-8` and absolute tolerance `1e-11`; macroscopic shear magnitudes must not exceed `1e-11`, and `meanStressNorm` must not exceed `1e-3 Pa`. This tests nontrivial orientation-dependent load transfer, not merely a homogeneous response.
+- **`zero-response-periodic-resolved`, `zero-response-free-resolved`, and `zero-response-clamped-resolved` — exact zero eigenstrain.** Each sets both CTE reference values to zero while retaining the elastic problem and otherwise default random microstructure, then selects periodic, free-surface, or zero-displacement boundaries. For both rows, all six reported macroscopic strain magnitudes must be at most `1e-12`, `meanStressNorm` at most `1e-6 Pa`, and mean/max damage exactly zero. These are macroscopic output checks; they do not assert that every nodal displacement entry is bitwise zero.
+
+The laminate reference is constructed directly in `scripts/verify.py` from the isolated run input, rather than from production homogenization routines. The homogeneous references likewise evaluate the input material expressions independently. A historical A/B counterpart is not required for any of these analytical assertions.
+
+### Other targets in the unified gate
+
+The following checks were already separate verification programs or smoke baselines, but are now also required by `check`:
+
+| Target | What is exercised | Additional pass criteria |
+|---|---|---|
+| `mms-small` | The separate, zero-damage, temperature-independent `mmsSandbox` on 1,000 and 8,000 cells, with all ten temperature steps per mesh | Complete 20 rows; finite L2/H1/L-infinity errors; H1 rate in `[0.8,1.2]`, the other rates in `[1.8,2.2]`; final errors within 1% of archived values; nonempty plots and FE log |
+| `uniaxial-small` | The separate homogeneous displacement-controlled damage program at pseudo-time steps 0.1, 0.05, and 0.025 | Independent SciPy `solve_ivp` ODE reference; final error no more than 1.01 times the archived error; fitted order in `[0.8,1.3]`; spatial spread at most `1e-9`; algebraic stress mismatch at most `1e-8 * StressThreshold`; complete logs and plots |
+| `damage-resolved` | The current resolved-grain production executable for all ten steps from 2000 to 1800 K, 1,000 cells, current material fits, and an isolated 60 MPa threshold | Nonzero final mean and maximum damage, monotone bounded damage, ten finite macroscopic rows, ten PVD fields, and no convergence/warning markers; with `--reference-run`, strict A/B comparison also applies |
+| `smoke-hopg` | The independent HOPG fork for two steps from 2500 to 2400 K on 1,000 cells | Complete finite macroscopic and stress-statistics CSVs, exactly zero damage, consistent nonempty PVD fields, and no convergence/warning markers; there is no independent analytical stress oracle for this smoke case |
+
+The detailed copied-source MMS and uniaxial formulations are given in the following sections. Their reduced target limits remain explicit: the 64,000-cell copied-source MMS level and 80/160-step uniaxial cases are recorded as deferred, not silently treated as passed.
+
+### Nine-case resolved-grain A/B regression
+
+`ab-resolved` is complementary to the independent tests above. Its cases are `smoke-resolved` (default WorkStream), `serial-resolved`, `damage-resolved`, `damage-serial-resolved`, `exact-resolved` (exact periodic condensation), `zero-resolved` (clamped random microstructure), `free-resolved` (traction-free random microstructure), `uniform-resolved` (also has the analytical oracle above), and `refine-resolved` (8,000 cells). The two damage cases run the full ten-step history; the others use the two-step reduced interval.
+
+With `--reference-run`, the comparator requires identical CSV schemas and row counts; exact `cycle`, `step`, and `cgIterations` columns; all other CSV values within relative tolerance `1e-10` and reference-scaled absolute tolerance `1e-12`; identical PVD field sequences; and byte-identical VTU content after normalizing only the deal.II generation timestamp. It also requires identical temperature/iteration, cell/DoF, CG-iteration, macroscopic-iteration, and `Cbar`-rebuild histories. Thus a zero exit code from the executable alone cannot hide changed numerical output.
+
+Without a reference run, the intrinsic convergence, artifact, and any analytical checks still run, but no claim of historical equivalence is made. A/B equality does not replace the independent unit, MMS, or analytical oracles.
+
+## Copied-source MMS: zero-damage thermoelastic PDE
 
 ### What it exercises
 
@@ -109,25 +139,9 @@ The archived input has:
 
 The body force was derived with SymPy in `mmsSandbox/myNotebook.ipynb` and cross-checked numerically. The executable explicitly rejects temperature-dependent material functions because the manufactured body force does not contain the required additional terms.
 
-### Archived results
+### Interpretation and dated results
 
-At the final temperature step, `mms_convergence_data.json` contains:
-
-| Cells | L2 displacement error | H1 seminorm error | L-infinity error |
-|---:|---:|---:|---:|
-| 1,000 | 1.23566e-6 | 2.70120e-5 | 2.79240e-6 |
-| 8,000 | 3.09003e-7 | 1.33240e-5 | 7.14046e-7 |
-| 64,000 | 7.71554e-8 | 6.63367e-6 | 1.79742e-7 |
-
-Observed rates across the two successive refinements are:
-
-| Norm | 1,000 to 8,000 | 8,000 to 64,000 | Expected Q1 trend |
-|---|---:|---:|---:|
-| L2 | 2.000 | 2.002 | 2 |
-| H1 seminorm | 1.020 | 1.006 | 1 |
-| L-infinity | 1.967 | 1.990 | Approximately 2 here |
-
-This supports correctness of the assembled stiffness and thermal-load terms for the manufactured, temperature-independent problem. It does **not** verify current temperature-dependent elastic/CTE functions, damage, periodic homogenization, random orientations, or the HOPG fork.
+This test supports correctness of the assembled stiffness and thermal-load terms for the manufactured, temperature-independent problem. It does **not** verify current temperature-dependent elastic/CTE functions, damage, periodic homogenization, random orientations, or the HOPG fork. Archived errors and observed rates are recorded in [studies.md](studies.md#archived-copied-source-mms-convergence); current reduced-target tolerances are specified in [Other targets in the unified gate](#other-targets-in-the-unified-gate).
 
 ### Reproduction
 
@@ -155,21 +169,9 @@ Here `zz` is appropriate because the test's loading axis and crystal c-axis coin
 
 `plot_verification.py` independently integrates the reduced scalar damage ODE with SciPy `solve_ivp` (`rtol=1e-12`, `atol=1e-14`). It compares the finite-element backward-Euler trajectories at step sizes 0.1, 0.05, 0.025, 0.0125, and 0.00625. It also checks stress against the algebraic relation at the same damage and checks spatial uniformity.
 
-### Archived results
+### Interpretation and dated results
 
-The independent reference gives final damage `0.6904145198`. Archived finite-element results are:
-
-| Pseudo-time step | Final damage | Absolute final error | Observed order from previous row |
-|---:|---:|---:|---:|
-| 0.1 | 0.687177 | 3.23752e-3 | — |
-| 0.05 | 0.688889 | 1.52552e-3 | 1.086 |
-| 0.025 | 0.689688 | 7.26520e-4 | 1.070 |
-| 0.0125 | 0.690062 | 3.52520e-4 | 1.043 |
-| 0.00625 | 0.690241 | 1.73520e-4 | 1.023 |
-
-The least-squares observed order over all five step sizes is approximately 1.056, consistent with backward Euler. The largest archived spatial damage spread is below `1e-11`. The largest absolute algebraic stress mismatch is approximately `3.61e-3 Pa`, about `1.8e-11` times the 200 MPa threshold, using the test's tight linear-solver tolerance.
-
-This supports the damage update and stress–damage coupling in a self-limiting, displacement-controlled homogeneous test. It does not verify load-controlled response, general multiaxial damage, shear-driven mechanisms, heating/crack closure, nonuniform damage fields, or physical calibration.
+This test supports the damage update and stress–damage coupling in a self-limiting, displacement-controlled homogeneous test. It does not verify load-controlled response, general multiaxial damage, shear-driven mechanisms, heating/crack closure, nonuniform damage fields, or physical calibration. Archived final damage, errors, and observed orders are recorded in [studies.md](studies.md#archived-uniaxial-damage-convergence); current reduced-target tolerances are specified in [Other targets in the unified gate](#other-targets-in-the-unified-gate).
 
 ### Reproduction
 
@@ -181,17 +183,6 @@ python3 plot_verification.py --run
 ```
 
 Without `--run`, the script reconstructs the reference and plots archived `convergence_data.json`. The plotting/reference scripts require NumPy, SciPy, and Matplotlib.
-
-## Other archived checks
-
-The following are useful but not replacements for a shared automated regression suite:
-
-- `resolvedGrainCooling/README.md` documents uniform-orientation checks, including the zero-stress periodic thermoelastic case and expected homogeneous response.
-- `resolvedGrainCooling/results/quasi-newton-verification.md` compares exact and frozen-`Cbar` paths over the dated sweep and reports worst disagreement `6.9e-7` in the compared outputs.
-- `resolvedGrainCooling/results/aitken-study/README.md` compares accelerated and unaccelerated fixed-point solutions in a high-damage case.
-- `hopgCooling/README.md` and `hopgCooling/results/mosaic-spread/summary.md` document orientation sampling and stress-statistics behavior for the 2026-10-12 HOPG configuration.
-
-Read each with its archived input and date. Solver agreement is verification of numerical equivalence, not experimental validation.
 
 ## Minimum regression gate after a refactor
 
@@ -214,8 +205,8 @@ A zero exit code alone is not a successful scientific baseline.
 The following should remain visible as limitations rather than implied coverage:
 
 - no shared-library tests linked directly against both production forks;
-- no automated MMS for temperature-dependent constitutive functions;
+- the copied-source `mmsSandbox` remains temperature-independent; the new production MMS covers the shared cell kernel and constitutive functions, not a spatially varying production cooling driver;
 - no general nonuniform-damage analytical solution;
-- no comprehensive periodic-homogenization regression against an independent implementation;
+- periodic analytical coverage is limited to homogeneous and two-phase laminate configurations, not arbitrary microstructures;
 - no experimental validation of residual stress, damage evolution, or HOPG scaling laws;
 - no calibrated uncertainty bounds for digitized material inputs and damage parameters.

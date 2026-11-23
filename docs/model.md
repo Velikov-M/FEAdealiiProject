@@ -68,7 +68,7 @@ R(\omega)=
 \qquad (x)_+=\max(x,0).
 \]
 
-The stress is reevaluated at the trial damage, so stiffness degradation and stress relaxation are included in the local root problem. The root search uses `[old_damage, 0.999]`, exploits the known residual shape for this particular power law, and calls Boost `toms748`. The analytical bracketing/maximizer logic is law-specific and must be reconsidered if the kinetics change.
+The stress is reevaluated at the trial damage, so stiffness degradation and stress relaxation are included in the local root problem. The root search uses `[old_damage, 0.999]`. It retains the historical analytic partition when that partition brackets a valid root and otherwise scans the actual coupled residual for the first sign-changing bracket before calling Boost `toms748`. The analytic partition assumes stress frozen at old damage; the fallback is required because the true stress depends on trial damage. The scan is a numerical bracketing procedure, not a proof that arbitrary new kinetic laws have a unique root.
 
 Consequences of the implemented law:
 
@@ -77,7 +77,8 @@ Consequences of the implemented law:
 - damage does not heal;
 - stiffness loss is bilateral: there is no crack-closure or tension/compression distinction;
 - the production model rejects heating rather than treating it as a sign reversal;
-- approaching `omega = 1` makes the kinetic term singular and the root bracket narrow; the warning threshold is not a validity proof.
+- approaching `omega = 1` makes the kinetic term singular and the root bracket narrow; the warning threshold is not a validity proof;
+- with only `C33` degraded, positive definiteness additionally requires `(1-omega)*C33^0*(C11+C12) > 2*C13^2` and positive basal/shear eigenvalue conditions. The implementation rejects states outside this range instead of applying CG to an indefinite matrix.
 
 The elastic constitutive structure admits the potential discussed in `resolvedGrainCooling/thermodynamic_potential.md`, but the stress-driven kinetic law is an additional non-potential-derived assumption. That report is not a general proof of thermodynamic consistency for every input or state.
 
@@ -101,7 +102,7 @@ The archived mesh is a 10 by 10 by 10 base grid of cubic cells. Grain identity i
 
 The elements are three-dimensional vector Q1 elements with `QGauss(fe.degree+1)`, hence eight quadrature points per cell.
 
-For `resolvedGrainCooling`, orientations are sampled uniformly on the sphere unless `UniformOrientation` is selected. HOPG adds `OrientationDistribution = mosaicGaussian`: two independent zero-mean Gaussian tilt components rotate the c-axis away from global z. `MosaicSpreadDeg` is the standard deviation of **each one-dimensional component**, not the FWHM. For a one-dimensional Gaussian, FWHM is approximately `2.355*sigma`.
+For `resolvedGrainCooling`, orientations are sampled uniformly on the sphere unless `UniformOrientation` is selected. Setting `UseOrientationFile` instead reads one explicit global-to-local rotation per grain from `InputFiles/OrientationFile`; this is used for reproducible microstructures and the analytical two-phase laminate. HOPG adds `OrientationDistribution = mosaicGaussian`: two independent zero-mean Gaussian tilt components rotate the c-axis away from global z. `MosaicSpreadDeg` is the standard deviation of **each one-dimensional component**, not the FWHM. For a one-dimensional Gaussian, FWHM is approximately `2.355*sigma`.
 
 Orientation matrices map global to local coordinates. Their rows are the local basis vectors; row index 2 is the c-axis. Reports of local normal stress must therefore use `sigma_33`, not `sigma_zz`.
 

@@ -75,7 +75,6 @@ namespace StepCooling
     return tmpTensor;
   }
 
-  /** Check Voigt component values and invariance under rotation about the local c-axis. */
   template <int dim>
   void checkTransverseIsotropy(const SymmetricTensor<4, dim> &C,
                                double C11, double C12, double C13, double C33, double C44)
@@ -137,6 +136,36 @@ namespace StepCooling
     cteTensor[1][1] = this->alpha11_0 * this->alpha11_func->value(tempPoint);
     cteTensor[2][2] = this->alpha33_0 * this->alpha33_func->value(tempPoint) * (1 - curOmega);
     return cteTensor;
+  }
+
+  bool isPositiveDefiniteTransverselyIsotropic(const std::array<double, 5> &constants,
+                                               const double omega)
+  {
+    const double C11 = constants[0];
+    const double C12 = constants[1];
+    const double C13 = constants[2];
+    const double C33 = constants[3] * (1.0 - omega);
+    const double C44 = constants[4];
+    return C11 - C12 > 0.0 && C11 + C12 > 0.0 && C33 > 0.0 && C44 > 0.0 &&
+           C33 * (C11 + C12) - 2.0 * C13 * C13 > 0.0;
+  }
+
+  double criticalDamageForPositiveDefiniteness(const std::array<double, 5> &constants)
+  {
+    return 1.0 - 2.0 * constants[2] * constants[2] /
+                  (constants[3] * (constants[0] + constants[1]));
+  }
+
+  void checkPositiveDefiniteness(const std::array<double, 5> &constants, const double omega)
+  {
+    if (!isPositiveDefiniteTransverselyIsotropic(constants, omega))
+      {
+        const double critical = criticalDamageForPositiveDefiniteness(constants);
+        throw std::runtime_error(
+          "damaged transversely isotropic stiffness is not positive definite at damage " +
+          std::to_string(omega) + "; normal-subspace critical damage is " +
+          std::to_string(critical));
+      }
   }
 
   template class ElasticityTensor<3>;

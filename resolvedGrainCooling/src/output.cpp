@@ -54,6 +54,7 @@ namespace StepCooling
   template <int dim>
   void ElasticProblem<dim>::output_results(const unsigned int cycle) const
   {
+    TimerOutput::Scope timer_section(timer, "Output results");
     // Local 11/22/33 and global xx/yy/zz names identify tensor frames explicitly. sigma_33 is
     // the per-grain c-axis normal stress that drives damage, not global sigma_zz.
     const QGauss<dim> quadrature_formula(fe.degree + 1);
@@ -261,6 +262,7 @@ namespace StepCooling
   template <int dim>
   void ElasticProblem<dim>::process_solution(unsigned int refinementCycle, const unsigned int tempStepNum, const unsigned int iterSolverStepNum, double curT)
   {
+    TimerOutput::Scope timer_section(timer, "Process solution");
     // There is no manufactured solution to compare against here -- this is the model, not a
     // verification test -- so what gets reported is the physics the study is about: how much of
     // the RVE is in c-axis tension, how extreme it gets, and how far damage has run.
@@ -379,6 +381,79 @@ namespace StepCooling
     convergence_table.add_value("minSigmaZZ", minSigmaZZ);
     convergence_table.add_value("tensionFrac", tensionFraction);
     convergence_table.add_value("meanStressNorm", meanStress.norm());
+  }
+
+  template <int dim>
+  void ElasticProblem<dim>::recordMacroscopicState(const unsigned int refinementCycle,
+                                                   const unsigned int temperatureStepNumber,
+                                                   const double curT)
+  {
+    TimerOutput::Scope timer_section(timer, "Record macroscopic state");
+    // Record only the converged state, not intermediate fixed-point iterates.
+    MacroscopicRecord record;
+    record.refinementCycle = refinementCycle;
+    record.temperatureStep = temperatureStepNumber;
+    record.temperature = curT;
+    record.cooling = prm.get_double({"ModelParameters"}, "InitialTemperature") - curT;
+    record.Ebar = {{macroscopicStrain[0][0], macroscopicStrain[1][1], macroscopicStrain[2][2],
+                    macroscopicStrain[1][2], macroscopicStrain[0][2], macroscopicStrain[0][1]}};
+    for (unsigned int k = 0; k < nMacroDofs; ++k)
+      record.CbarDiag[k] = homogenizedStiffness(k, k);
+    record.CbarAsymmetry = lastCbarAsymmetry;
+    record.cgIterations = lastCgIterations;
+    record.meanStressNorm = computeAverageStress(curT).norm();
+
+    double meanDamage = 0.0, maxDamage = 0.0, weight = 0.0;
+    const QGauss<dim> quad(fe.degree + 1);
+    FEValues<dim> fev(fe, quad, update_JxW_values);
+    for (const auto &cell : dof_handler.active_cell_iterators())
+    {
+      fev.reinit(cell);
+      const auto qp = damageInQuadraturePoints.get_data(cell);
+      for (unsigned int q = 0; q < quad.size(); ++q)
+      {
+        meanDamage += qp[q]->damage * fev.JxW(q);
+        maxDamage = std::max(maxDamage, qp[q]->damage);
+        weight += fev.JxW(q);
+      }
+    }
+    record.meanDamage = meanDamage / weight;
+    record.maxDamage = maxDamage;
+    macroscopicHistory.push_back(record);
+  }
+
+  template <int dim>
+  void ElasticProblem<dim>::finalizeRunOutput()
+  {
+    convergence_table.set_precision("meanDamage", 3);
+    convergence_table.set_precision("maxDamage", 3);
+    convergence_table.set_precision("maxSigmaZZ", 3);
+    convergence_table.set_precision("minSigmaZZ", 3);
+    convergence_table.set_precision("tensionFrac", 3);
+    convergence_table.set_precision("meanStressNorm", 3);
+    convergence_table.set_scientific("maxSigmaZZ", true);
+    convergence_table.set_scientific("minSigmaZZ", true);
+    convergence_table.set_scientific("meanStressNorm", true);
+
+    convergence_table.set_tex_caption("cells", "\\# cells");
+    convergence_table.set_tex_caption("dofs", "\\# dofs");
+    convergence_table.set_tex_format("cells", "r");
+    convergence_table.set_tex_format("dofs", "r");
+
+    convergence_table.write_text(std::cout);
+    writeMacroscopicHistory(outputPath("_macroscopic_history.csv"));
+    std::cout << "Linear solver totals: solves=" << totalLinearSolveCount
+              << ", CG iterations=" << totalCgIterations
+              << ", Cbar rebuilds=" << cbarRefreshCount << std::endl;
+
+    if (!pvdTimeSeries.empty())
+    {
+      std::ofstream pvd(outputPath(".pvd"));
+      DataOutBase::write_pvd_record(pvd, pvdTimeSeries);
+      std::cout << "Wrote ParaView time series polycrystalCooling.pvd ("
+                << pvdTimeSeries.size() << " steps). Open THIS, not the individual .vtu files."
+                << std::endl;
+    }
   }
 
   template class ElasticProblem<3>;

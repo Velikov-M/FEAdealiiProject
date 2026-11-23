@@ -26,21 +26,35 @@ namespace StepCooling
   class ElasticityTensor
   {
   public:
+    /** Construct an empty tensor wrapper; call setFromPrm() before evaluation. */
     ElasticityTensor() = default;
+
+    /** Load stiffness constants and temperature functions from the parameter schema.
+     * @param[in] prm Parsed model parameters.
+     */
     void setFromPrm(const ParameterHandler &prm);
+
+    /** Construct the damaged local stiffness at a given temperature.
+     * @param[in] curOmega Current damage, dimensionless.
+     * @param[in] curTemperature Current temperature in K.
+     * @return Rank-four stiffness tensor in Pa in local crystal coordinates.
+     */
     SymmetricTensor<4,dim,double> getElasticityTensor(double curOmega, double curTemperature) const;
 
-    // C33 at zero damage, i.e. the coefficient of the rank-one damage term. Damage scales ONLY
-    // this entry (getElasticityTensor multiplies it by (1-omega) and touches nothing else), which
-    // is what makes the rank-one identity below exact.
+    /** Return undamaged C33, the coefficient of the rank-one damage update.
+     * @param[in] curTemperature Current temperature in K.
+     * @return Undamaged C33 in Pa.
+     */
     double getC33AtZeroDamage(double curTemperature) const
     {
       Point<1> tempPoint(curTemperature);
       return this->C33_0 * this->C33_func->value(tempPoint);
     }
 
-    // Undamaged Voigt constants at T, in the order C11, C12, C13, C33, C44. Used by the startup
-    // self-check, which compares the constructed tensor against these.
+    /** Return undamaged constants ordered as C11, C12, C13, C33, C44.
+     * @param[in] curTemperature Current temperature in K.
+     * @return Five undamaged Voigt constants in Pa.
+     */
     std::array<double, 5> voigtConstants(double curTemperature) const
     {
       Point<1> p(curTemperature);
@@ -72,12 +86,25 @@ namespace StepCooling
   class CteTensor
   {
   public:
+    /** Construct an empty CTE wrapper; call setFromPrm() before evaluation. */
     CteTensor() = default;
+
+    /** Load secant CTE constants and temperature functions from the parameter schema.
+     * @param[in] prm Parsed model parameters.
+     */
     void setFromPrm(const ParameterHandler &prm);
+
+    /** Construct the damaged local secant CTE tensor at a given temperature.
+     * @param[in] curOmega Current damage, dimensionless.
+     * @param[in] curTemperature Current temperature in K.
+     * @return Secant CTE tensor in 1/K in local crystal coordinates.
+     */
     SymmetricTensor<2,dim,double> getcteTensor(double curOmega, double curTemperature) const;
 
-    // alpha_33 at zero damage: the coefficient of the rank-one damage term, exactly analogous to
-    // ElasticityTensor::getC33AtZeroDamage().
+    /** Return undamaged alpha33, the coefficient of the rank-one damage update.
+     * @param[in] curTemperature Current temperature in K.
+     * @return Undamaged secant alpha33 in 1/K.
+     */
     double getAlpha33AtZeroDamage(double curTemperature) const
     {
       Point<1> tempPoint(curTemperature);
@@ -90,9 +117,38 @@ namespace StepCooling
     double alpha33_0;
   };
 
+  /** Check stiffness components and invariance under rotation about the local c-axis.
+   * @param[in] C Constructed rank-four stiffness tensor in Pa.
+   * @param[in] C11 Expected undamaged C11 in Pa.
+   * @param[in] C12 Expected undamaged C12 in Pa.
+   * @param[in] C13 Expected undamaged C13 in Pa.
+   * @param[in] C33 Expected undamaged C33 in Pa.
+   * @param[in] C44 Expected undamaged C44 in Pa.
+   */
   template <int dim>
   void checkTransverseIsotropy(const SymmetricTensor<4, dim> &C,
                                double C11, double C12, double C13, double C33, double C44);
+
+  /** Test positive definiteness of a damaged transversely isotropic stiffness.
+   * @param[in] constants Undamaged constants ordered C11, C12, C13, C33, C44 in Pa.
+   * @param[in] omega Damage, dimensionless; only C33 is scaled by (1-omega).
+   * @return True when all normal and shear eigenvalue conditions are strictly positive.
+   */
+  bool isPositiveDefiniteTransverselyIsotropic(const std::array<double, 5> &constants,
+                                               double omega);
+
+  /** Return the damage at which the normal-stiffness determinant reaches zero.
+   * @param[in] constants Undamaged constants ordered C11, C12, C13, C33, C44 in Pa.
+   * @return Critical damage, dimensionless. Valid undamaged materials return a value in (0,1).
+   */
+  double criticalDamageForPositiveDefiniteness(const std::array<double, 5> &constants);
+
+  /** Require a damaged stiffness to be positive definite.
+   * @param[in] constants Undamaged constants ordered C11, C12, C13, C33, C44 in Pa.
+   * @param[in] omega Damage, dimensionless.
+   * @throw std::runtime_error If any stiffness eigenvalue condition is non-positive.
+   */
+  void checkPositiveDefiniteness(const std::array<double, 5> &constants, double omega);
 }
 
 #endif

@@ -55,6 +55,7 @@ namespace StepCooling
   void ElasticProblem<dim>::solveLinearSystem(const Vector<double> &rhs, Vector<double> &dst)
   {
     TimerOutput::Scope timer_section(timer, "Solve system");
+    ++totalLinearSolveCount;
 
     if (directSolver)
     {
@@ -81,13 +82,14 @@ namespace StepCooling
     else
       cg.solve(system_matrix, dst, rhs, *cgPreconditioner);
 
+    lastCgIterations = solver_control.last_step();
+    totalCgIterations += lastCgIterations;
     // A plain runtime check rather than Assert(): Assert() compiles to a no-op in Release
     // builds (-DNDEBUG), so relying on it here would mean a genuinely non-converged CG
     // solve could silently pass through in Release with no indication anything went wrong.
     if (solver_control.last_check() != SolverControl::success)
       throw std::runtime_error("CG solver did not converge (last residual " +
                                 std::to_string(solver_control.last_value()) + ")");
-    lastCgIterations = solver_control.last_step();
   }
 
   template <int dim>

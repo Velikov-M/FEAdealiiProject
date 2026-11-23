@@ -17,8 +17,17 @@ namespace StepCooling
   class ParameterReader : public EnableObserverPointer
   {
   public:
-    ParameterReader(ParameterHandler &);
-    void read_parameters(const std::string &);
+    /** Bind the reader to a persistent parameter handler.
+     * @param[in] parameterHandler Handler receiving declarations and parsed values.
+     */
+    ParameterReader(ParameterHandler &parameterHandler);
+
+    /** Declare the schema and parse a parameter file.
+     * @param[in] parameterFile Input parameter file path.
+     */
+    void read_parameters(const std::string &parameterFile);
+
+    /** Declare every resolved-grain parameter, default, pattern, and help string. */
     void declare_parameters();
 
   private:

@@ -62,6 +62,8 @@
 #include <boost/math/tools/roots.hpp>
 
 #include "resolved_grain/assembly_data.h"
+#include "resolved_grain/convergence.h"
+#include "resolved_grain/damage_law.h"
 #include "resolved_grain/material.h"
 #include "resolved_grain/orientations.h"
 #include "resolved_grain/output.h"
@@ -79,6 +81,11 @@ namespace StepCooling
     periodic          ///< u = Ebar.x + u_periodic, with zero volume-averaged stress.
   };
 
+  /** Parse a BoundaryConditions/Type value.
+   * @param[in] s Boundary-condition name.
+   * @return Parsed boundary-condition family.
+   * @throw std::runtime_error If @p s is not a supported name.
+   */
   inline BoundaryConditionType parseBoundaryConditionType(const std::string &s)
   {
     if (s == "zeroDisplacement") return BoundaryConditionType::zeroDisplacement;
@@ -88,6 +95,10 @@ namespace StepCooling
                              "' (expected zeroDisplacement | freeSurface | periodic)");
   }
 
+  /** Return the input-file name of a boundary-condition family.
+   * @param[in] t Boundary-condition family.
+   * @return Stable textual name used in parameters and logs.
+   */
   inline std::string boundaryConditionTypeName(BoundaryConditionType t)
   {
     switch (t)
@@ -128,22 +139,77 @@ namespace StepCooling
   class ElasticProblem
   {
   public:
+    /** Construct an uninitialized problem using a persistent parameter set.
+     * @param[in] prm Parameter handler that must outlive this problem.
+     */
     ElasticProblem(ParameterHandler &prm);
+
+    /** Execute initialization, all refinement cycles, cooling histories, and final output. */
     void run();
+
+    /** Write the declared parameter set as JSON.
+     * @param[in] filename Destination file path.
+     */
     void printProblemParametersToJson(const std::string filename);
 
   private:
+    /** Configure threading, boundary conditions, material functions, and startup checks. */
+    void initializeRun();
 
+    /** Read the mesh and initialize grain identities, orientations, and boundary IDs.
+     *
+     * Boundary IDs are assigned on the coarse mesh before initial refinement. Random
+     * orientations are generated once per grain and replace mesh orientation metadata.
+     */
+    void initializeMicrostructure();
+
+    /** Run independent cooling histories on all requested refinement cycles. */
+    void runRefinementCycles();
+
+    /** Initialize or refine the mesh and all mesh-dependent state for one cycle.
+     * @param[in] refinementCycle Zero-based cycle index.
+     */
+    void prepareRefinementCycle(unsigned int refinementCycle);
+
+    /** Solve and selectively output the complete cooling history on the current mesh.
+     * @param[in] refinementCycle Zero-based cycle index used in output numbering.
+     */
+    void runCoolingHistory(unsigned int refinementCycle);
+
+    /** Write the convergence table, macroscopic CSV history, and ParaView time series. */
+    void finalizeRunOutput();
+
+    /** Distribute DoFs and initialize damage, constraints, sparsity, matrices, and vectors.
+     *
+     * This resets quadrature-point damage to zero; damage is not transferred between cycles.
+     */
     void setup_system();
-    // Both cell loops implement identical equations; the serial path is the deterministic A/B
-    // reference for the WorkStream path.
+
+    /** Assemble the mechanical system at fixed damage using the selected cell-loop backend.
+     * @param[in] curTemperature Current uniform temperature in K.
+     */
     void assemble_system(double curTemperature);
+
+    /** Serial reference implementation of cell assembly.
+     * @param[in] curTemperature Current uniform temperature in K.
+     */
     void assemble_cells_serial(double curTemperature);
+
+    /** WorkStream implementation of cell assembly.
+     * @param[in] curTemperature Current uniform temperature in K.
+     */
     void assemble_cells_workstream(double curTemperature);
-    // The periodic solves share one matrix and therefore one factorization/preconditioner.
-    // prepareLinearSolver() is called after assembly and before the first solve.
+
+    /** Solve the non-periodic mechanical system and distribute constraints to the solution. */
     void solve();
+
+    /** Prepare the selected direct solver or preconditioner for the assembled matrix. */
     void prepareLinearSolver();
+
+    /** Solve one right-hand side without distributing constraints to the raw solution.
+     * @param[in] rhs Right-hand-side vector.
+     * @param[out] dst Solution vector overwritten by the solve.
+     */
     void solveLinearSystem(const Vector<double> &rhs, Vector<double> &dst);
     std::unique_ptr<SparseDirectUMFPACK> directSolver;
     std::unique_ptr<PreconditionSSOR<SparseMatrix<double>>> cgPreconditioner;
@@ -151,14 +217,54 @@ namespace StepCooling
     std::unique_ptr<TrilinosWrappers::SparseMatrix> trilinosMatrix;
     std::unique_ptr<TrilinosWrappers::PreconditionAMG> amgPreconditioner;
     mutable unsigned int lastCgIterations = 0;
+    unsigned long long totalCgIterations = 0; ///< Cumulative iterations over all solved right-hand sides.
+    unsigned int totalLinearSolveCount = 0;   ///< Includes direct and exact zero-RHS solves.
     double lastCbarAsymmetry = 0.0; ///< Relative asymmetry of the homogenized stiffness.
     bool damageCeilingWarned = false;
     // Current temperature for const field-output stress reconstruction.
     double lastProcessedTemperature = 0.0;
+    /** Solve one temperature step to coupled displacement-damage convergence.
+     * @param[in] curT End-of-step temperature in K.
+     * @param[in] dT Positive cooling increment for this step in K.
+     * @param[in] refinementCycle Zero-based refinement-cycle index.
+     * @param[in] temperatureStepNumber One-based temperature-step index.
+     */
     void calculateSolutionTemperatureStep(double curT, double dT, unsigned int refinementCycle, int temperatureStepNumber);
+
+    /** Append scalar results for a converged temperature step.
+     * @param[in] refinementCycle Zero-based refinement-cycle index.
+     * @param[in] temperatureStepNumber One-based temperature-step index.
+     * @param[in] curT Converged step temperature in K.
+     */
+    void recordMacroscopicState(unsigned int refinementCycle,
+                                unsigned int temperatureStepNumber,
+                                double curT);
+
+    /** Copy converged damage to the old-damage baseline used by the next temperature step. */
+    void commitConvergedDamage();
+
+    /** Estimate error, refine/coarsen, reassign grains, and reset mesh-dependent state.
+     * @param[in] fractionToRefine Fraction of cells selected for refinement.
+     * @param[in] fractionToCoarse Fraction of cells selected for coarsening.
+     */
     void refine_grid(double fractionToRefine, double fractionToCoarse);
+
+    /** Write one VTU field snapshot and append it to the PVD time series.
+     * @param[in] cycle Output number used in the filename.
+     */
     void output_results(const unsigned int cycle = 1) const;
+
+    /** Log stress/damage diagnostics and append convergence-table values for one iterate.
+     * @param[in] refinementCycle Zero-based refinement-cycle index.
+     * @param[in] tempStepNum One-based temperature-step index.
+     * @param[in] iterSolverStepNum One-based displacement-damage iteration index.
+     * @param[in] curT Current temperature in K.
+     */
     void process_solution(unsigned int refinementCycle, const unsigned int tempStepNum, const unsigned int iterSolverStepNum, double curT);
+
+    /** Read the legacy cell-to-material mapping into cellToMaterial.
+     * @param[in] fileName Mapping file path.
+     */
     void parse_cellToMaterial_data(std::string fileName);
 
     // ----------------------------------------------------------------------------------------
@@ -166,14 +272,13 @@ namespace StepCooling
     // ----------------------------------------------------------------------------------------
     BoundaryConditionType boundaryConditionType = BoundaryConditionType::zeroDisplacement;
 
-    // Geometric face-pair labelling of the boundary. Needed only by "periodic", but harmless
-    // (and cheap) for the others, so it runs unconditionally once after the mesh is read.
+    /** Assign geometric face-pair IDs on the coarse cube for periodic matching. */
     void assignBoundaryIds();
 
-    // Assigns every active cell a grain (material_id) from its centroid, via a
-    // GrainsPerSide^3 lattice over the cube. Idempotent and a pure function of position, so it
-    // is safe to re-run after refinement -- which is the point: the grain field then stays
-    // fixed while the mesh under it gets finer.
+    /** Assign a fixed 1-based grain material_id to every active cell by centroid position.
+     *
+     * The mapping is independent of mesh resolution and preserves grains under refinement.
+     */
     void assignGrains();
     unsigned int grainsPerSide = 1;
 
@@ -191,45 +296,52 @@ namespace StepCooling
     double grainCacheAlpha33 = 0.0;
     double grainCacheTemperature = std::numeric_limits<double>::quiet_NaN();
     double grainCacheC33 = 0.0;
+    /** Rebuild per-grain global stiffness/CTE caches if temperature or grain count changed.
+     * @param[in] curTemperature Current uniform temperature in K.
+     */
     void refreshGrainStiffnessCache(double curTemperature);
 
-    // Fills `constraints` for the selected BC family. Called from assemble_system() on every
-    // iteration, because AffineConstraints must be rebuilt whenever it is re-closed.
+    /** Rebuild and close all hanging-node and selected boundary constraints. */
     void applyBoundaryConstraints();
 
-    // Minimal kinematic support for "freeSurface": exactly 6 scalar constraints removing the 3
-    // translations and 3 rotations, and NOTHING else -- any extra constraint would apply a real
-    // load and destroy the <sigma> = 0 property the free-surface case exists to have.
+    /** Apply exactly six free-surface constraints removing rigid translations and rotations. */
     void constrainRigidBodyModes();
 
-    // Constrains all dim components of the DoFs sitting at `where` to zero. Used by the periodic
-    // formulation to remove the three rigid translations.
+    /** Constrain all displacement components at one mesh vertex.
+     * @param[in] where Vertex position in m.
+     */
     void constrainOneVertex(const Point<dim> &where);
 
-    // The periodic problem is condensed into sparse displacement equations plus six Kelvin
-    // macroscopic unknowns. Cbar is recovered from average stresses under six unit strains;
-    // only the constrained coupling columns L are stored. See homogenization.md section 6.
+    /** Number of macroscopic Kelvin strain/stress components in three dimensions. */
     static constexpr unsigned int nMacroDofs = 6;
 
-    // Assemble L with K and the thermal RHS in one pass so all use the same frozen damage state.
+    /** Assemble L with K and the thermal RHS in one pass at the same frozen damage state. */
     bool assembleMacroCoupling = false;
+    /** Scatter one cell's six macroscopic coupling columns through homogeneous constraints.
+     * @param[in] cell_L Local coupling matrix with one column per Kelvin strain component.
+     * @param[in] local_dof_indices Global DoF indices corresponding to cell_L rows.
+     */
     void distributeMacroCouplingColumns(
       const FullMatrix<double> &cell_L,
       const std::vector<types::global_dof_index> &local_dof_indices);
 
-    // The 7-solve of section 6: U0 = K^-1 F_theta, Y_k = K^-1 L_k (six more, same matrix and
-    // same factorization), Cbar by quadrature, Ebar = -Cbar^-1 sigma_bar_theta, and finally
-    // U = U0 - sum_k Ebar_k Y_k with no extra solve. Leaves the answer in solDisplacement and
-    // macroscopicStrain.
+    /** Solve the periodic fluctuation and macroscopic strain at zero average stress.
+     * @param[in] curTemperature Current uniform temperature in K.
+     */
     void solve_with_zero_mean_stress(double curTemperature);
 
-    // Builds Cbar and its inverse: six solves (Y_k = K^-1 L_k) plus a quadrature pass per column.
-    // Shared by both paths -- the exact one calls it every pass, the quasi-Newton one only when
-    // Cbar has gone stale.
+    /** Rebuild Cbar, its inverse, and six unit-strain fluctuation solutions at fixed damage.
+     * @param[in] curTemperature Current uniform temperature in K.
+     */
     void refreshHomogenizedStiffness(double curTemperature);
 
-    // The Ebar iteration with a frozen Cbar. Returns false if it did not converge within
-    // MaxMacroscopicIterations, which is the caller's signal that Cbar is stale.
+    /** Iterate macroscopic strain using a frozen Cbar and the exact average-stress residual.
+     *
+     * At fixed damage the residual is affine in Ebar. Every pass uses current damage and K;
+     * stale Cbar changes only the correction direction, not the zero-stress target.
+     * @param[in] curTemperature Current uniform temperature in K.
+     * @return True when the residual converges within MaxMacroscopicIterations.
+     */
     bool iterateMacroscopicStrain(double curTemperature);
 
     std::vector<Vector<double>> macroUnitSolutions;   // Y_k = K^-1 L_k, kept for the exact path
@@ -238,36 +350,73 @@ namespace StepCooling
     unsigned int lastMacroIterations = 0;
     unsigned int cbarRefreshCount = 0;
 
-    // Volume average of the stress over the RVE, by plain quadrature summation. Used as the
-    // <sigma> = 0 residual check, and with unit macroscopic strains to build Cbar column by
-    // column. includeThermalStrain is false for the unit-strain solves, whose whole point is the
-    // purely mechanical response.
+    /** Compute volume-averaged stress by quadrature for an arbitrary mechanical state.
+     * @param[in] curTemperature Current uniform temperature in K.
+     * @param[in] displacementField Fluctuation or total displacement field in m.
+     * @param[in] macroStrain Uniform macroscopic strain, dimensionless.
+     * @param[in] includeThermalStrain Whether to subtract the thermal eigenstrain.
+     * @return Volume-averaged Cauchy stress in Pa in global coordinates.
+     */
     SymmetricTensor<2, dim> computeAverageStress(
       double curTemperature,
       const Vector<double> &displacementField,
       const SymmetricTensor<2, dim> &macroStrain,
       bool includeThermalStrain) const;
+
+    /** Compute the current state's volume-averaged stress including thermal strain.
+     * @param[in] curTemperature Current uniform temperature in K.
+     * @return Volume-averaged Cauchy stress in Pa in global coordinates.
+     */
     SymmetricTensor<2, dim> computeAverageStress(double curTemperature) const;
 
-    // L: six right-hand-side vectors, one per Kelvin component of Ebar.
+    /** Six constrained right-hand sides, one per Kelvin component of macroscopic strain. */
     std::vector<Vector<double>> macroCouplingColumns;
-    // Homogenized stiffness Cbar, a by-product of the condensation and a result in its own
-    // right (it gives the effective CTE, and its evolution is a macroscopic softening curve).
+    /** Homogenized stiffness in Pa, reconstructed from six unit-strain stress responses. */
     FullMatrix<double> homogenizedStiffness{nMacroDofs, nMacroDofs};
-    // The macroscopic strain itself: zero for every non-periodic BC family.
+    /** Current macroscopic strain; identically zero for non-periodic boundary conditions. */
     SymmetricTensor<2, dim> macroscopicStrain;
 
-    // Backward-Euler damage prediction at fixed displacement, followed by convergence checks.
+    /** Predict damage over one cooling increment using the selected cell-loop backend.
+     * @param[in] curTemperature Current uniform temperature in K.
+     * @param[in] tempInc Positive cooling pseudo-time increment in K.
+     */
     void predict_damage_tempInc_external_solver(double curTemperature, double tempInc);
+
+    /** Serial reference implementation of damage prediction.
+     * @param[in] curTemperature Current uniform temperature in K.
+     * @param[in] tempInc Positive cooling pseudo-time increment in K.
+     * @param[in] stressThreshold Tensile activation threshold in Pa.
+     * @param[in] A_param Kinetic prefactor A.
+     * @param[in] m_param Kinetic exponent m.
+     * @param[in] residualTolerance Maximum accepted dimensionless kinetic residual.
+     */
     void predict_damage_cells_serial(double curTemperature, double tempInc,
                                       double stressThreshold, double A_param, double m_param,
                                       double residualTolerance);
+
+    /** WorkStream implementation of damage prediction.
+     * @param[in] curTemperature Current uniform temperature in K.
+     * @param[in] tempInc Positive cooling pseudo-time increment in K.
+     * @param[in] stressThreshold Tensile activation threshold in Pa.
+     * @param[in] A_param Kinetic prefactor A.
+     * @param[in] m_param Kinetic exponent m.
+     * @param[in] residualTolerance Maximum accepted dimensionless kinetic residual.
+     */
     void predict_damage_cells_workstream(double curTemperature, double tempInc,
                                           double stressThreshold, double A_param, double m_param,
                                           double residualTolerance);
-    // Per-quadrature-point damage update, shared verbatim by both paths above so the two cannot
-    // drift apart. Writes only to this cell's own quadrature data, which is what makes the
-    // threaded version safe without a copier.
+
+    /** Update all quadrature-point damage values owned by one cell.
+     * @param[in] cell Active cell whose local damage storage is updated.
+     * @param[in,out] fe_values Reinitialized FE values object supplied by the caller.
+     * @param[out] global_displacement_gradients Reusable quadrature-point gradient storage.
+     * @param[in] curTemperature Current uniform temperature in K.
+     * @param[in] tempInc Positive cooling pseudo-time increment in K.
+     * @param[in] stressThreshold Tensile activation threshold in Pa.
+     * @param[in] A_param Kinetic prefactor A.
+     * @param[in] m_param Kinetic exponent m.
+     * @param[in] residualTolerance Maximum accepted dimensionless kinetic residual.
+     */
     void update_damage_on_cell(
       const typename DoFHandler<dim>::active_cell_iterator &cell,
       FEValues<dim> &fe_values,
@@ -275,24 +424,38 @@ namespace StepCooling
       double curTemperature, double tempInc,
       double stressThreshold, double A_param, double m_param, double residualTolerance);
 
-    double kineticResidual(SymmetricTensor<2,dim> localStress, double curOmega, double oldOmega, double tempInc);
-
-    // Independent scalar snapshots are required: copying CellDataStorage copies shared pointers,
-    // not the DamageQData objects, and would alias the state being monitored.
+    /** Independent damage values used for convergence and relaxation.
+     *
+     * Copying CellDataStorage would alias shared DamageQData pointers instead of creating a
+     * snapshot, so values are copied explicitly by active cell and quadrature point.
+     */
     using DamageSnapshot = std::map<typename Triangulation<dim>::cell_iterator, std::vector<double>>;
+
+    /** Copy every active cell's current damage values into independent scalar storage.
+     * @return Snapshot indexed by active cell and quadrature point.
+     */
     DamageSnapshot snapshotDamage();
 
     /** Irons-Tuck relaxation of the displacement-damage fixed point.
      *
      * Uses successive residuals without an extra linear solve. Relaxed damage is clamped to
      * [old_damage, 0.999] to preserve irreversibility and avoid the kinetic singularity.
+     * @param[in] damageBeforePredict Damage values before the current prediction pass.
      */
     void applyAitkenRelaxation(const DamageSnapshot &damageBeforePredict);
+
+    /** Clear Aitken residual history at the start of a temperature step. */
     void resetAitkenState();
     DamageSnapshot aitkenPreviousResidual;
     double aitkenMu = 1.0;
     bool aitkenHasPrevious = false;
     unsigned int aitkenRelaxedIterations = 0;
+    /** Test displacement, damage, and equilibrium convergence between fixed-point iterates.
+     * @param[in] curT Current temperature in K.
+     * @param[in] oldSolDisplacement Displacement at the previous iterate in m.
+     * @param[in] oldDamageSnapshot Damage at the previous iterate.
+     * @return True only when all three configured convergence criteria pass.
+     */
     bool checkConvergenceCriteria(double curT,
                                     const Vector<double> &oldSolDisplacement,
                                     const DamageSnapshot &oldDamageSnapshot);
@@ -300,9 +463,24 @@ namespace StepCooling
     ElasticityTensor<dim> elasticityTensor;
     CteTensor<dim> cteTensor;
 
+    /** Return a grain's global-to-local rotation matrix.
+     * @param[in] cellId One-based grain material_id.
+     * @return Rotation whose rows are local basis vectors in global coordinates.
+     */
     Tensor<2,dim,double> getRotTensorGlobalToLocal(int cellId) const;
+
+    /** Evaluate local Cauchy stress from total local strain and thermal eigenstrain.
+     * @param[in] localStrain Total strain in crystal coordinates, dimensionless.
+     * @param[in] curOmega Current damage, dimensionless.
+     * @param[in] curTemperature Current uniform temperature in K.
+     * @return Local Cauchy stress in Pa.
+     */
     SymmetricTensor<2,dim> getLocalStressTensor(const SymmetricTensor<2,dim> &localStrain, double curOmega, double curTemperature) const;
 
+    /** Parse Neper mesh input and collect orientation metadata for GridIn.
+     * @param[in] mshFileName Mesh file path.
+     * @return Mesh stream with unsupported orientation metadata removed.
+     */
     std::istringstream parseMSHandPrepareStream(std::string mshFileName);
 
     ParameterHandler &prm;
@@ -327,7 +505,7 @@ namespace StepCooling
     Vector<double> system_rhs;
 
     const FEValuesExtractors::Vector displacement{0};
-    TimerOutput timer;
+    mutable TimerOutput timer; ///< Profiling sections, including const stress and output operations.
 
     ConvergenceTable convergence_table;
 
@@ -342,15 +520,18 @@ namespace StepCooling
       unsigned int cgIterations;
     };
     std::vector<MacroscopicRecord> macroscopicHistory;
+    /** Write the accumulated macroscopic history to CSV.
+     * @param[in] fileName Destination CSV path.
+     */
     void writeMacroscopicHistory(const std::string &fileName) const;
 
-    // <OutputDirectory>/<OutputFileNamePrefix><suffix>, creating the directory if needed.
+    /** Construct a prefixed output path and create its directory when needed.
+     * @param[in] suffix Filename suffix appended to OutputFileNamePrefix.
+     * @return Full output path.
+     */
     std::string outputPath(const std::string &suffix) const;
 
-    // (pseudo-time, filename) pairs for the ParaView .pvd time series written at the end of
-    // run(). The time value is the accumulated cooling s = T_0 - T, which INCREASES over the run
-    // -- temperature itself decreases, and ParaView orders a series by increasing time, so using
-    // T directly would play the animation backwards.
+    /** PVD (pseudo-time, filename) records using accumulated cooling T0 - T in K. */
     mutable std::vector<std::pair<double, std::string>> pvdTimeSeries;
 
   };

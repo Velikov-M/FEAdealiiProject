@@ -21,6 +21,7 @@ namespace StepCooling
     const SymmetricTensor<2, dim> &macroStrain,
     bool includeThermalStrain) const
   {
+    TimerOutput::Scope timer_section(timer, "Compute average stress");
     const QGauss<dim> quadrature_formula(fe.degree + 1);
     FEValues<dim> fe_values(fe, quadrature_formula, update_gradients | update_JxW_values);
     std::vector<Tensor<2, dim>> gradients(quadrature_formula.size());
@@ -161,11 +162,6 @@ namespace StepCooling
     ++cbarRefreshCount;
   }
 
-  /** Frozen-Jacobian quasi-Newton iteration on macroscopic strain.
-   *
-   * At fixed damage the residual is affine in Ebar. Every pass evaluates the exact residual
-   * from the current damage and current K; stale Cbar changes only the correction direction.
-   */
   template <int dim>
   bool ElasticProblem<dim>::iterateMacroscopicStrain(double curTemperature)
   {

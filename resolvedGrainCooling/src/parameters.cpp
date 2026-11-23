@@ -56,6 +56,13 @@ namespace StepCooling
                         "eightfold -- 4 or 16 elements per grain would need non-cubic grain "
                         "boxes, i.e. deliberately anisotropic grain shapes.");
 
+      prm.declare_entry("UseOrientationFile",
+                        "false",
+                        Patterns::Bool(),
+                        "Read one global-to-local rotation matrix per grain from "
+                        "InputFiles/OrientationFile instead of random sampling. Intended for "
+                        "reproducible microstructures and analytical verification cases.");
+
       prm.declare_entry("UniformOrientation",
                         "false",
                         Patterns::Bool(),
@@ -195,7 +202,7 @@ namespace StepCooling
       prm.declare_entry("KineticAlgebraicSolverTolerance",
                         "1e-4",
                         Patterns::Double(0),
-                        "Relative tolerance of iterative algebraic solver for kinetic equation");
+                        "Absolute dimensionless residual tolerance for the kinetic equation");
 
       // All periodic right-hand sides reuse one prepared direct factorization or preconditioner.
       prm.declare_entry("LinearSolverType",

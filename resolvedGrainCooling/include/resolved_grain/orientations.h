@@ -16,6 +16,7 @@ namespace StepCooling
    * Only the c-axis direction is physically relevant for transverse isotropy. The remaining
    * axes are deterministic because rotation about c is a material symmetry.
    *
+   * @param[in] c Unit c-axis vector in global coordinates.
    * @return R mapping GLOBAL to LOCAL coordinates: v_local = R * v_global. Local basis vectors
    *         are matrix rows, and row 2 is the c-axis expressed in global coordinates.
    */
@@ -44,6 +45,8 @@ namespace StepCooling
   /** Sample a c-axis uniformly on the sphere and return its global-to-local frame.
    *
    * Uniform cos(theta), rather than uniform theta, gives the required spherical area measure.
+   * @param[in,out] rng Random engine advanced by the two sampled uniform values.
+   * @return Global-to-local orientation matrix.
    */
   template <int dim>
   Tensor<2, dim> randomOrientationUniformOnSphere(std::mt19937_64 &rng)

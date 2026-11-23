@@ -1,6 +1,11 @@
 #include "resolved_grain/elastic_problem.h"
 #include "resolved_grain/parameters.h"
 
+/** Run the resolved-grain cooling model.
+ * @param[in] argc Number of command-line arguments.
+ * @param[in] argv Command-line arguments; argv[1] optionally selects the parameter file.
+ * @return Zero on success and one on an uncaught model exception.
+ */
 int main(int argc, char *argv[])
 {
   // Trilinos calls MPI_Comm_size() during construction of any of its objects, so MPI must be up

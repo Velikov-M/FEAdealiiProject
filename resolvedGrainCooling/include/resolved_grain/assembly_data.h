@@ -17,9 +17,15 @@ namespace StepCooling
    */
   namespace AssemblyScratch
   {
+    /** Per-thread FE values and cached quadrature-point assembly quantities. */
     template <int dim>
     struct Scratch
     {
+      /** Construct reusable assembly scratch storage.
+       * @param[in] fe Finite element used by FEValues.
+       * @param[in] quadrature Cell quadrature rule.
+       * @param[in] flags FEValues update flags.
+       */
       Scratch(const FiniteElement<dim> &fe, const Quadrature<dim> &quadrature,
               const UpdateFlags flags)
         : fe_values(fe, quadrature, flags)
@@ -31,6 +37,9 @@ namespace StepCooling
         , globalCte_q(quadrature.size())
       {}
 
+      /** Reconstruct non-copyable FEValues while cloning scratch for a worker thread.
+       * @param[in] s Prototype scratch object.
+       */
       Scratch(const Scratch &s)
         : fe_values(s.fe_values.get_fe(), s.fe_values.get_quadrature(),
                     s.fe_values.get_update_flags())
@@ -51,6 +60,7 @@ namespace StepCooling
       std::vector<SymmetricTensor<2, dim>> globalCte_q;
     };
 
+    /** Cell-local matrix, RHS, DoF map, and optional macroscopic coupling columns. */
     struct Copy
     {
       FullMatrix<double> cell_matrix;
@@ -65,15 +75,24 @@ namespace StepCooling
   /** Per-thread damage-update scratch; cell damage itself lives in CellDataStorage. */
   namespace DamageScratch
   {
+    /** Per-thread FE values and displacement-gradient storage for damage prediction. */
     template <int dim>
     struct Scratch
     {
+      /** Construct reusable damage-update scratch storage.
+       * @param[in] fe Finite element used by FEValues.
+       * @param[in] quadrature Cell quadrature rule.
+       * @param[in] flags FEValues update flags.
+       */
       Scratch(const FiniteElement<dim> &fe, const Quadrature<dim> &quadrature,
               const UpdateFlags flags)
         : fe_values(fe, quadrature, flags)
         , global_displacement_gradients(quadrature.size())
       {}
 
+      /** Reconstruct non-copyable FEValues while cloning damage scratch for a worker thread.
+       * @param[in] s Prototype scratch object.
+       */
       Scratch(const Scratch &s)
         : fe_values(s.fe_values.get_fe(), s.fe_values.get_quadrature(),
                     s.fe_values.get_update_flags())
@@ -84,9 +103,7 @@ namespace StepCooling
       std::vector<Tensor<2, dim>> global_displacement_gradients;
     };
 
-    // Empty: the damage update writes only into the current cell's own quadrature-point data,
-    // which no other cell touches, so there is nothing to hand to a serialized copier.
-    // WorkStream still requires the type to exist.
+    /** Empty copier payload because workers write only their own cell's damage storage. */
     struct Copy
     {};
   } // namespace DamageScratch

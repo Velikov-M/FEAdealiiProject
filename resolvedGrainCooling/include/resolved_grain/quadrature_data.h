@@ -17,11 +17,17 @@ namespace StepCooling
     double damage = 0.0;
     double old_damage = 0.0;
 
+    /** Return the number of scalar values required by quadrature-point transfer.
+     * @return Always two: current damage and old damage.
+     */
     unsigned int number_of_values() const override
     {
       return 2;
     }
 
+    /** Pack current and old damage for quadrature-point data transfer.
+     * @param[out] values Destination vector of size two.
+     */
     void pack_values(std::vector<double> &values) const override
     {
       AssertDimension(values.size(), 2);
@@ -29,6 +35,9 @@ namespace StepCooling
       values[1] = old_damage;
     }
 
+    /** Restore current and old damage after quadrature-point data transfer.
+     * @param[in] values Source vector of size two.
+     */
     void unpack_values(const std::vector<double> &values) override
     {
       AssertDimension(values.size(), 2);

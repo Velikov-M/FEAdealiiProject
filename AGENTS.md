@@ -27,7 +27,7 @@ The current implementations are:
 - `resolvedGrainCooling/`: randomly oriented crystallites with scalar damage and periodic, free-surface, or zero-displacement boundary conditions.
 - `hopgCooling/`: a fork for HOPG-like mosaic orientations; its tracked baseline is damage-free thermoelasticity.
 
-The resolved-grain **behavior-preserving modular refactor** was completed on 2026-11-18: implementation is split into focused modules, comments are audited, and focused Doxygen documentation and nine-case A/B regression coverage are available. HOPG remains a separate single-file implementation. Sharing code between the forks is a separate architectural task; scientific changes require separate approval.
+The resolved-grain **behavior-preserving modular refactor** was completed on 2026-11-18: implementation is split into focused modules, comments are audited, and focused Doxygen documentation and nine-case A/B regression coverage are available. A follow-up on 2026-11-19 reduced `run()` to four orchestration calls, documented all resolved-grain method declarations, and added the development policy and `fea-development` project skill. A production-linked test framework now provides GoogleTest unit tests, SymPy-generated oracles, temperature-dependent MMS convergence, and analytical homogeneous/laminate cases through `./scripts/verify.sh check`. The same task corrected coupled-stress damage-root bracketing and zero-load convergence, and added stiffness positive-definiteness checks; the accepted nine-case outputs remained unchanged. HOPG remains a separate single-file implementation. Sharing code between the forks is a separate architectural task; scientific changes require separate approval.
 
 This current-state documentation was audited against archived commit `67dd766` (2026-10-12). No build or run was performed during the documentation audit because the environment lacked CMake, Docker, and deal.II; archived verification data are identified as such.
 
@@ -43,11 +43,12 @@ If these disagree, inspect code and Git history, record the discrepancy, and cor
 
 Current-state documents:
 
+- [Development and Doxygen policy](docs/development-policy.md)
 - [Model formulation and assumptions](docs/model.md)
 - [Code architecture, builds, runs, and outputs](docs/code-and-runs.md)
-- [Verification status and regression expectations](docs/verification.md)
+- [Verification strategy and regression expectations](docs/verification.md)
 - [Material-data provenance and validity](docs/material-data.md)
-- [Study evidence, performance, and documentation status](docs/studies.md)
+- [Study and verification evidence, performance, and documentation status](docs/studies.md)
 
 ## Repository map
 
@@ -82,7 +83,7 @@ See [model.md](docs/model.md) for the equations and scope of these assumptions.
 
 ## Build and run
 
-Each model/verification folder is a separate deal.II CMake project requiring deal.II 9.8.0. AMG also requires the Trilinos ML support in the deal.II installation; the direct solver requires UMFPACK.
+Each model/verification folder is a separate deal.II CMake project requiring deal.II 9.8.0. AMG also requires the Trilinos ML support in the deal.II installation; the direct solver requires UMFPACK. Resolved-grain builds enable tests by default and additionally require GoogleTest 1.11 or newer, CTest, Python 3, and SymPy; configure with `-DBUILD_TESTING=OFF` for a model-only build without these test dependencies.
 
 From one program directory, for example:
 
@@ -101,6 +102,7 @@ The tracked HOPG baseline has 64,000 cells and is not a small smoke test. Use re
 
 - The user and supervisors choose scientific priorities. The architect turns them into operative tasks and checks scientific/architectural consistency. Implementation starts only after the user approves the operative task.
 - Review changes as focused Git diffs. Separate behavior-preserving edits from constitutive, material-data, boundary-condition, and solver changes.
+- Follow [development-policy.md](docs/development-policy.md) for module boundaries, orchestration, Doxygen coverage, naming, and completion checks.
 - Actively identify contradictions and uncertain assumptions. When project intent is missing, ask the user rather than inventing a purpose or silently selecting new physics.
 - `hopgCooling/main.cpp` and the resolved-grain modules under `resolvedGrainCooling/include/` and `src/` are independent implementations derived from a duplicated fork. A shared bug fix must be checked deliberately in both; do not assume editing one updates the other. Deduplication itself is an architectural task requiring approval.
 - MMS and uniaxial tests are also separate source copies. Passing them does not automatically test later edits in either production fork.

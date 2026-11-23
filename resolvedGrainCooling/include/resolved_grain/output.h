@@ -20,11 +20,18 @@ namespace StepCooling
   class CAxisPostprocessor : public DataPostprocessorVector<dim>
   {
   public:
+    /** Construct the postprocessor with persistent per-grain orientations.
+     * @param[in] orientations Global-to-local matrices indexed by grain material_id - 1.
+     */
     CAxisPostprocessor(const std::vector<Tensor<2, dim>> &orientations)
       : DataPostprocessorVector<dim>("c_axis", update_default)
       , orientations(orientations)
     {}
 
+    /** Evaluate c-axis vectors on the current cell.
+     * @param[in] inputs Solution values and active-cell context supplied by DataOut.
+     * @param[out] computed_quantities Destination c-axis vectors.
+     */
     virtual void evaluate_vector_field(
       const DataPostprocessorInputs::Vector<dim> &inputs,
       std::vector<Vector<double>> &computed_quantities) const override
@@ -50,12 +57,19 @@ namespace StepCooling
   class TotalDisplacementPostprocessor : public DataPostprocessorVector<dim>
   {
   public:
+    /** Construct the postprocessor with the current macroscopic strain.
+     * @param[in] macroStrain Macroscopic strain tensor, dimensionless.
+     */
     TotalDisplacementPostprocessor(const SymmetricTensor<2, dim> &macroStrain)
       : DataPostprocessorVector<dim>("displacement_total",
                                      update_values | update_quadrature_points)
       , macroStrain(macroStrain)
     {}
 
+    /** Evaluate total displacement at all requested points.
+     * @param[in] inputs Fluctuation values and evaluation points supplied by DataOut.
+     * @param[out] computed_quantities Destination total displacement vectors in m.
+     */
     virtual void evaluate_vector_field(
       const DataPostprocessorInputs::Vector<dim> &inputs,
       std::vector<Vector<double>> &computed_quantities) const override
