@@ -51,212 +51,225 @@ namespace StepCooling
               << std::endl;
   }
 
-  template <int dim>
-  void ElasticProblem<dim>::output_results(const unsigned int cycle) const
+  CellOutputFields::CellOutputFields(unsigned int cellCount,
+                                     bool writeFullStress,
+                                     bool writeFullStrain)
+    : damage(cellCount)
+    , sigma33(cellCount)
+    , eps33(cellCount)
+    , basalShear(cellCount)
+    , vonMises(cellCount)
+    , pressure(cellCount)
+    , damageDrivingRatio(cellCount)
+    , writeFullStress(writeFullStress)
+    , writeFullStrain(writeFullStrain)
   {
-    TimerOutput::Scope timer_section(timer, "Output results");
-    // Local 11/22/33 and global xx/yy/zz names identify tensor frames explicitly. sigma_33 is
-    // the per-grain c-axis normal stress that drives damage, not global sigma_zz.
-    const QGauss<dim> quadrature_formula(fe.degree + 1);
-    const unsigned int n_q_points = quadrature_formula.size();
-    FEValues<dim> fe_values(fe, quadrature_formula,
-                            update_gradients | update_JxW_values);
-    DataOut<dim> data_out;
-    data_out.attach_dof_handler(dof_handler);
+    for (auto &component : macroscopicStrain)
+      component.reinit(cellCount);
+    if (writeFullStress)
+      {
+        for (auto &component : localStress)
+          component.reinit(cellCount);
+        for (auto &component : globalStress)
+          component.reinit(cellCount);
+      }
+    if (writeFullStrain)
+      {
+        for (auto &component : localStrain)
+          component.reinit(cellCount);
+        for (auto &component : globalStrain)
+          component.reinit(cellCount);
+      }
+  }
 
-    // Displacement as a genuine vector, so ParaView's "Warp By Vector" works without setup.
-    const std::vector<std::string> displacement_names(dim, "displacement");
+  template <int dim>
+  void ElasticProblem<dim>::addDisplacementAndOrientationOutput(
+    DataOut<dim> &dataOut,
+    CAxisPostprocessor<dim> &cAxisPostprocessor,
+    TotalDisplacementPostprocessor<dim> &totalDisplacementPostprocessor) const
+  {
+    const std::vector<std::string> displacementNames(dim, "displacement");
     const std::vector<DataComponentInterpretation::DataComponentInterpretation>
-      displacement_interpretation(dim,
+      displacementInterpretation(dim,
         DataComponentInterpretation::component_is_part_of_vector);
-    data_out.add_data_vector(solDisplacement, displacement_names,
-                             DataOut<dim>::type_dof_data, displacement_interpretation);
+    dataOut.add_data_vector(solDisplacement, displacementNames,
+                            DataOut<dim>::type_dof_data, displacementInterpretation);
+    dataOut.add_data_vector(solDisplacement, cAxisPostprocessor);
+    dataOut.add_data_vector(solDisplacement, totalDisplacementPostprocessor);
+  }
 
-    // The grain c-axis, as a vector, for glyphing.
-    CAxisPostprocessor<dim> cAxisPostprocessor(rotmatOrientationCell);
-    data_out.add_data_vector(solDisplacement, cAxisPostprocessor);
+  template <int dim>
+  CellOutputFields ElasticProblem<dim>::computeCellOutputFields(
+    bool writeFullStress, bool writeFullStrain) const
+  {
+    CellOutputFields fields(triangulation.n_active_cells(), writeFullStress, writeFullStrain);
+    const std::array<double, 6> ebarValues{{
+      macroscopicStrain[0][0], macroscopicStrain[1][1], macroscopicStrain[2][2],
+      macroscopicStrain[1][2], macroscopicStrain[0][2], macroscopicStrain[0][1]}};
+    for (unsigned int k = 0; k < 6; ++k)
+      fields.macroscopicStrain[k] = ebarValues[k];
 
-    // u = Ebar.x + u~. Warp By Vector on THIS shows the RVE actually contracting; warping by
-    // `displacement` alone would show only the fluctuation. See the postprocessor's comment.
-    TotalDisplacementPostprocessor<dim> totalDisplacementPostprocessor(macroscopicStrain);
-    data_out.add_data_vector(solDisplacement, totalDisplacementPostprocessor);
-
-    const bool writeFullTensor =
-      prm.get_bool({"OutputParameters"}, "WriteFullStressTensor");
-    const bool writeFullStrain =
-      prm.get_bool({"OutputParameters"}, "WriteFullStrainTensor");
-    const double T0 = prm.get_double({"ModelParameters"}, "InitialTemperature");
+    const QGauss<dim> quadrature(fe.degree + 1);
+    FEValues<dim> feValues(fe, quadrature, update_gradients | update_JxW_values);
+    std::vector<Tensor<2, dim>> gradients(quadrature.size());
     const double curT = lastProcessedTemperature;
     const double stressThreshold =
       prm.get_double({"MaterialParameters", "DamageParameters"}, "StressThreshold");
 
-    const unsigned int nCells = triangulation.n_active_cells();
-    Vector<double> cell_damage(nCells);
-    Vector<double> cell_sigma_33(nCells);          // LOCAL: normal to the basal plane -- the driver
-    Vector<double> cell_eps_33(nCells);            // LOCAL: its kinematic partner, total strain
-    Vector<double> cell_tau_basal(nCells);         // LOCAL: sqrt(sigma_13^2 + sigma_23^2)
-    Vector<double> cell_von_mises(nCells);         // frame independent
-    Vector<double> cell_pressure(nCells);          // frame independent
-    Vector<double> cell_driving_ratio(nCells);     // sigma_33 / threshold
+    for (const auto &cell : dof_handler.active_cell_iterators())
+      {
+        feValues.reinit(cell);
+        feValues[displacement].get_function_gradients(solDisplacement, gradients);
+        const auto qpDamage = damageInQuadraturePoints.get_data(cell);
+        const Tensor<2, dim> rotGlobalToLocal = getRotTensorGlobalToLocal(cell->material_id());
+        const Tensor<2, dim> rotLocalToGlobal = transpose(rotGlobalToLocal);
 
-    // Complete tensors, only when asked for. Local: 11, 22, 12, 13, 23 (33 is always written
-    // above, so it is not repeated here). Global: all six.
+        double damage = 0.0;
+        SymmetricTensor<2, dim> localStressAvg, localStrainAvg;
+        for (unsigned int q = 0; q < quadrature.size(); ++q)
+          {
+            const SymmetricTensor<2, dim> globalStrain =
+              dealii::symmetrize(gradients[q]) + macroscopicStrain;
+            const SymmetricTensor<2, dim> localStrain =
+              Physics::Transformations::basis_transformation(globalStrain, rotGlobalToLocal);
+            damage += qpDamage[q]->damage;
+            localStrainAvg += localStrain;
+            localStressAvg += getLocalStressTensor(localStrain, qpDamage[q]->damage, curT);
+          }
+        damage /= quadrature.size();
+        localStrainAvg /= quadrature.size();
+        localStressAvg /= quadrature.size();
+
+        const unsigned int idx = cell->active_cell_index();
+        fields.damage[idx] = damage;
+        fields.sigma33[idx] = localStressAvg[2][2];
+        fields.eps33[idx] = localStrainAvg[2][2];
+        fields.basalShear[idx] = std::sqrt(localStressAvg[0][2] * localStressAvg[0][2] +
+                                           localStressAvg[1][2] * localStressAvg[1][2]);
+        fields.vonMises[idx] =
+          std::sqrt(1.5 * (deviator(localStressAvg) * deviator(localStressAvg)));
+        fields.pressure[idx] = -trace(localStressAvg) / dim;
+        fields.damageDrivingRatio[idx] = fields.sigma33[idx] / stressThreshold;
+
+        if (writeFullStrain)
+          {
+            const SymmetricTensor<2, dim> globalStrainAvg =
+              Physics::Transformations::basis_transformation(localStrainAvg, rotLocalToGlobal);
+            fields.localStrain[0][idx] = localStrainAvg[0][0];
+            fields.localStrain[1][idx] = localStrainAvg[1][1];
+            fields.localStrain[2][idx] = localStrainAvg[0][1];
+            fields.localStrain[3][idx] = localStrainAvg[0][2];
+            fields.localStrain[4][idx] = localStrainAvg[1][2];
+            fields.globalStrain[0][idx] = globalStrainAvg[0][0];
+            fields.globalStrain[1][idx] = globalStrainAvg[1][1];
+            fields.globalStrain[2][idx] = globalStrainAvg[2][2];
+            fields.globalStrain[3][idx] = globalStrainAvg[0][1];
+            fields.globalStrain[4][idx] = globalStrainAvg[0][2];
+            fields.globalStrain[5][idx] = globalStrainAvg[1][2];
+          }
+
+        if (writeFullStress)
+          {
+            const SymmetricTensor<2, dim> globalStressAvg =
+              Physics::Transformations::basis_transformation(localStressAvg, rotLocalToGlobal);
+            fields.localStress[0][idx] = localStressAvg[0][0];
+            fields.localStress[1][idx] = localStressAvg[1][1];
+            fields.localStress[2][idx] = localStressAvg[0][1];
+            fields.localStress[3][idx] = localStressAvg[0][2];
+            fields.localStress[4][idx] = localStressAvg[1][2];
+            fields.globalStress[0][idx] = globalStressAvg[0][0];
+            fields.globalStress[1][idx] = globalStressAvg[1][1];
+            fields.globalStress[2][idx] = globalStressAvg[2][2];
+            fields.globalStress[3][idx] = globalStressAvg[0][1];
+            fields.globalStress[4][idx] = globalStressAvg[0][2];
+            fields.globalStress[5][idx] = globalStressAvg[1][2];
+          }
+      }
+    return fields;
+  }
+
+  template <int dim>
+  void ElasticProblem<dim>::addScalarMechanicalOutput(
+    DataOut<dim> &dataOut, const CellOutputFields &fields) const
+  {
+    dataOut.add_data_vector(fields.damage, "damage");
+    dataOut.add_data_vector(fields.sigma33, "sigma_33");
+    dataOut.add_data_vector(fields.eps33, "eps_33");
+    dataOut.add_data_vector(fields.basalShear, "tau_basal");
+    dataOut.add_data_vector(fields.vonMises, "von_mises");
+    dataOut.add_data_vector(fields.pressure, "pressure");
+    dataOut.add_data_vector(fields.damageDrivingRatio, "damage_driving_ratio");
+  }
+
+  template <int dim>
+  void ElasticProblem<dim>::addMacroscopicStrainOutput(
+    DataOut<dim> &dataOut, const CellOutputFields &fields) const
+  {
+    static const std::array<const char *, 6> names{{
+      "Ebar_11", "Ebar_22", "Ebar_33", "Ebar_23", "Ebar_13", "Ebar_12"}};
+    for (unsigned int k = 0; k < names.size(); ++k)
+      dataOut.add_data_vector(fields.macroscopicStrain[k], names[k]);
+  }
+
+  template <int dim>
+  void ElasticProblem<dim>::addFullStressOutput(
+    DataOut<dim> &dataOut, const CellOutputFields &fields) const
+  {
+    if (!fields.writeFullStress)
+      return;
     static const std::array<const char *, 5> localNames{{
       "sigma_11", "sigma_22", "sigma_12", "sigma_13", "sigma_23"}};
     static const std::array<const char *, 6> globalNames{{
       "sigma_xx", "sigma_yy", "sigma_zz", "sigma_xy", "sigma_xz", "sigma_yz"}};
-    static const std::array<const char *, 5> localStrainNames{{
+    for (unsigned int k = 0; k < localNames.size(); ++k)
+      dataOut.add_data_vector(fields.localStress[k], localNames[k]);
+    for (unsigned int k = 0; k < globalNames.size(); ++k)
+      dataOut.add_data_vector(fields.globalStress[k], globalNames[k]);
+  }
+
+  template <int dim>
+  void ElasticProblem<dim>::addFullStrainOutput(
+    DataOut<dim> &dataOut, const CellOutputFields &fields) const
+  {
+    if (!fields.writeFullStrain)
+      return;
+    static const std::array<const char *, 5> localNames{{
       "eps_11", "eps_22", "eps_12", "eps_13", "eps_23"}};
-    static const std::array<const char *, 6> globalStrainNames{{
+    static const std::array<const char *, 6> globalNames{{
       "eps_xx", "eps_yy", "eps_zz", "eps_xy", "eps_xz", "eps_yz"}};
-    std::array<Vector<double>, 5> cell_sigma_local, cell_eps_local;
-    std::array<Vector<double>, 6> cell_sigma_global, cell_eps_global;
-    if (writeFullTensor)
-    {
-      for (auto &v : cell_sigma_local)  v.reinit(nCells);
-      for (auto &v : cell_sigma_global) v.reinit(nCells);
-    }
-    if (writeFullStrain)
-    {
-      for (auto &v : cell_eps_local)  v.reinit(nCells);
-      for (auto &v : cell_eps_global) v.reinit(nCells);
-    }
+    for (unsigned int k = 0; k < localNames.size(); ++k)
+      dataOut.add_data_vector(fields.localStrain[k], localNames[k]);
+    for (unsigned int k = 0; k < globalNames.size(); ++k)
+      dataOut.add_data_vector(fields.globalStrain[k], globalNames[k]);
+  }
 
-    std::vector<Tensor<2, dim>> gradients(n_q_points);
+  template <int dim>
+  void ElasticProblem<dim>::output_results(const unsigned int cycle) const
+  {
+    TimerOutput::Scope timer_section(timer, "Output results");
+    DataOut<dim> dataOut;
+    dataOut.attach_dof_handler(dof_handler);
 
-    for (const auto &cell : dof_handler.active_cell_iterators())
-    {
-      fe_values.reinit(cell);
-      fe_values[displacement].get_function_gradients(solDisplacement, gradients);
-      const auto qp_damage = damageInQuadraturePoints.get_data(cell);
-      const Tensor<2, dim> rotGlobalToLocal = getRotTensorGlobalToLocal(cell->material_id());
-      const Tensor<2, dim> rotLocalToGlobal = transpose(rotGlobalToLocal);
+    CAxisPostprocessor<dim> cAxisPostprocessor(rotmatOrientationCell);
+    TotalDisplacementPostprocessor<dim> totalDisplacementPostprocessor(macroscopicStrain);
+    addDisplacementAndOrientationOutput(dataOut, cAxisPostprocessor,
+                                        totalDisplacementPostprocessor);
 
-      // Average tensors first, then derive cell scalars so nonlinear fields such as tau_basal
-      // remain consistent with the reported tensor components.
-      double damage = 0.0;
-      SymmetricTensor<2, dim> localStressAvg, localStrainAvg;
+    const bool writeFullStress = prm.get_bool({"OutputParameters"}, "WriteFullStressTensor");
+    const bool writeFullStrain = prm.get_bool({"OutputParameters"}, "WriteFullStrainTensor");
+    const CellOutputFields fields = computeCellOutputFields(writeFullStress, writeFullStrain);
+    addScalarMechanicalOutput(dataOut, fields);
+    addMacroscopicStrainOutput(dataOut, fields);
+    addFullStressOutput(dataOut, fields);
+    addFullStrainOutput(dataOut, fields);
 
-      for (unsigned int q = 0; q < n_q_points; ++q)
-      {
-        // Total strain: macroscopic plus fluctuation. macroscopicStrain is identically zero for
-        // every BC family except "periodic".
-        const SymmetricTensor<2, dim> globalStrain =
-          dealii::symmetrize(gradients[q]) + macroscopicStrain;
-        const SymmetricTensor<2, dim> localStrain =
-          Physics::Transformations::basis_transformation(globalStrain, rotGlobalToLocal);
-        damage         += qp_damage[q]->damage;
-        localStrainAvg += localStrain;
-        localStressAvg += getLocalStressTensor(localStrain, qp_damage[q]->damage, curT);
-      }
-      damage         /= n_q_points;
-      localStrainAvg /= n_q_points;
-      localStressAvg /= n_q_points;
-
-      const unsigned int idx = cell->active_cell_index();
-      cell_damage[idx]   = damage;
-      cell_sigma_33[idx] = localStressAvg[2][2];
-      // The kinematic partner of sigma_33: TOTAL strain normal to the basal plane. Elastic strain
-      // is this minus alpha_c*(T-T_0); the thermal part is the same for every grain in the local
-      // frame, which is why it is not written separately.
-      cell_eps_33[idx] = localStrainAvg[2][2];
-      // Basal shear magnitude; the current kinetic law itself reads only sigma_33.
-      cell_tau_basal[idx] = std::sqrt(localStressAvg[0][2] * localStressAvg[0][2] +
-                                      localStressAvg[1][2] * localStressAvg[1][2]);
-      // Invariants: identical in either frame, so there is no frame for a viewer to get wrong.
-      cell_von_mises[idx] =
-        std::sqrt(1.5 * (deviator(localStressAvg) * deviator(localStressAvg)));
-      cell_pressure[idx] = -trace(localStressAvg) / dim;   // positive in compression
-      // > 1 means this grain is above threshold and its damage is actively growing. The single
-      // most legible scalar for the story: threshold it at 1 in ParaView and what remains is
-      // exactly the set of grains driving the damage seen in the `damage` array.
-      cell_driving_ratio[idx] = cell_sigma_33[idx] / stressThreshold;
-
-      if (writeFullStrain)
-      {
-        const SymmetricTensor<2, dim> globalStrainAvg =
-          Physics::Transformations::basis_transformation(localStrainAvg, rotLocalToGlobal);
-        // Order must match localStrainNames / globalStrainNames above.
-        cell_eps_local[0][idx] = localStrainAvg[0][0];
-        cell_eps_local[1][idx] = localStrainAvg[1][1];
-        cell_eps_local[2][idx] = localStrainAvg[0][1];
-        cell_eps_local[3][idx] = localStrainAvg[0][2];
-        cell_eps_local[4][idx] = localStrainAvg[1][2];
-        cell_eps_global[0][idx] = globalStrainAvg[0][0];
-        cell_eps_global[1][idx] = globalStrainAvg[1][1];
-        cell_eps_global[2][idx] = globalStrainAvg[2][2];
-        cell_eps_global[3][idx] = globalStrainAvg[0][1];
-        cell_eps_global[4][idx] = globalStrainAvg[0][2];
-        cell_eps_global[5][idx] = globalStrainAvg[1][2];
-      }
-
-      if (writeFullTensor)
-      {
-        const SymmetricTensor<2, dim> globalStressAvg =
-          Physics::Transformations::basis_transformation(localStressAvg, rotLocalToGlobal);
-        // Order must match localNames / globalNames above.
-        cell_sigma_local[0][idx] = localStressAvg[0][0];
-        cell_sigma_local[1][idx] = localStressAvg[1][1];
-        cell_sigma_local[2][idx] = localStressAvg[0][1];
-        cell_sigma_local[3][idx] = localStressAvg[0][2];
-        cell_sigma_local[4][idx] = localStressAvg[1][2];
-        cell_sigma_global[0][idx] = globalStressAvg[0][0];
-        cell_sigma_global[1][idx] = globalStressAvg[1][1];
-        cell_sigma_global[2][idx] = globalStressAvg[2][2];
-        cell_sigma_global[3][idx] = globalStressAvg[0][1];
-        cell_sigma_global[4][idx] = globalStressAvg[0][2];
-        cell_sigma_global[5][idx] = globalStressAvg[1][2];
-      }
-    }
-
-    data_out.add_data_vector(cell_damage, "damage");
-    data_out.add_data_vector(cell_sigma_33, "sigma_33");
-    data_out.add_data_vector(cell_eps_33, "eps_33");
-    data_out.add_data_vector(cell_tau_basal, "tau_basal");
-    data_out.add_data_vector(cell_von_mises, "von_mises");
-    data_out.add_data_vector(cell_pressure, "pressure");
-    data_out.add_data_vector(cell_driving_ratio, "damage_driving_ratio");
-
-    // The macroscopic strain. It is ONE tensor for the whole RVE, not a field -- deal.II's
-    // DataOut has no VTK FieldData support, so it is written as uniform cell arrays purely so it
-    // travels with the picture and can be read off in ParaView's Information panel. The
-    // per-step history in macroscopic_history.csv is the better vehicle for plotting it.
-    static const std::array<const char *, 6> ebarNames{{
-      "Ebar_11", "Ebar_22", "Ebar_33", "Ebar_23", "Ebar_13", "Ebar_12"}};
-    const std::array<double, 6> ebarValues{{
-      macroscopicStrain[0][0], macroscopicStrain[1][1], macroscopicStrain[2][2],
-      macroscopicStrain[1][2], macroscopicStrain[0][2], macroscopicStrain[0][1]}};
-    std::array<Vector<double>, 6> cell_ebar;
-    for (unsigned int k = 0; k < 6; ++k)
-    {
-      cell_ebar[k].reinit(nCells);
-      cell_ebar[k] = ebarValues[k];
-      data_out.add_data_vector(cell_ebar[k], ebarNames[k]);
-    }
-    if (writeFullTensor)
-    {
-      for (unsigned int k = 0; k < localNames.size(); ++k)
-        data_out.add_data_vector(cell_sigma_local[k], localNames[k]);
-      for (unsigned int k = 0; k < globalNames.size(); ++k)
-        data_out.add_data_vector(cell_sigma_global[k], globalNames[k]);
-    }
-    if (writeFullStrain)
-    {
-      for (unsigned int k = 0; k < localStrainNames.size(); ++k)
-        data_out.add_data_vector(cell_eps_local[k], localStrainNames[k]);
-      for (unsigned int k = 0; k < globalStrainNames.size(); ++k)
-        data_out.add_data_vector(cell_eps_global[k], globalStrainNames[k]);
-    }
-
-    data_out.build_patches();
-
+    dataOut.build_patches();
     const std::string fileName = outputPath("-" + std::to_string(cycle) + ".vtu");
     std::ofstream output(fileName);
-    data_out.write_vtu(output);
+    dataOut.write_vtu(output);
 
-    // The .pvd resolves dataset paths RELATIVE to itself, and both sit in the same directory,
-    // so the record must carry the bare filename, not the path used to open the stream.
-    pvdTimeSeries.emplace_back(T0 - curT,
+    const double T0 = prm.get_double({"ModelParameters"}, "InitialTemperature");
+    pvdTimeSeries.emplace_back(T0 - lastProcessedTemperature,
                                std::filesystem::path(fileName).filename().string());
   }
   template <int dim>

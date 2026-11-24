@@ -100,6 +100,8 @@ def main():
     parser.add_argument("--coupling-acceleration", choices=("none", "aitken"), default="aitken")
     parser.add_argument("--exact-cbar", action="store_true")
     parser.add_argument("--amg-smoother-sweeps", type=int)
+    parser.add_argument("--set", action="append", default=[], metavar="PATH=VALUE",
+                        help="Override a fully nested parameter path after all standard benchmark settings")
     parser.add_argument("--base-input", type=Path,
                         default=ROOT / "resolvedGrainCooling/input.json")
     parser.add_argument("--run-root", type=Path, default=ROOT / "verification-runs")
@@ -114,6 +116,10 @@ def main():
         parser.error("refinement levels must be nonnegative")
     if args.timeout < 1 or args.memory_gib <= 0:
         parser.error("timeout and memory limit must be positive")
+    for assignment in args.set:
+        path, separator, _ = assignment.partition("=")
+        if not separator or not path:
+            parser.error(f"invalid --set override: {assignment!r}; expected PATH=VALUE")
 
     executable = ROOT / "resolvedGrainCooling/build/main"
     if not executable.is_file() and not args.dry_run:
@@ -147,6 +153,7 @@ def main():
         "coupling_acceleration": args.coupling_acceleration,
         "frozen_cbar_quasi_newton": not args.exact_cbar,
         "amg_smoother_sweeps": args.amg_smoother_sweeps,
+        "custom_overrides": args.set,
         "linear_solver_tolerance": base["SolverParameters"]["LinearSolverTolerance"]["value"],
         "timeout_seconds_per_case": args.timeout,
         "dry_run": args.dry_run,
@@ -185,6 +192,9 @@ def main():
         if args.amg_smoother_sweeps is not None:
             overrides["SolverParameters.AmgSmootherSweeps"] = args.amg_smoother_sweeps
         for path, value in overrides.items():
+            set_value(config, path, value)
+        for assignment in args.set:
+            path, _, value = assignment.partition("=")
             set_value(config, path, value)
         run_input = workspace / "input.json"
         verify.dump_json(run_input, config)

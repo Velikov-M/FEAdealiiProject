@@ -254,6 +254,49 @@ namespace StepCooling
      */
     void output_results(const unsigned int cycle = 1) const;
 
+    /** Add raw displacement, c-axis, and total displacement in the established field order.
+     * @param[in,out] dataOut Destination that references the supplied fields.
+     * @param[in] cAxisPostprocessor Orientation evaluator that must outlive DataOut evaluation.
+     * @param[in] totalDisplacementPostprocessor Total-displacement evaluator with the same lifetime.
+     */
+    void addDisplacementAndOrientationOutput(
+      DataOut<dim> &dataOut,
+      CAxisPostprocessor<dim> &cAxisPostprocessor,
+      TotalDisplacementPostprocessor<dim> &totalDisplacementPostprocessor) const;
+
+    /** Compute all cell-centered mechanical output arrays in one quadrature pass.
+     * @param[in] writeFullStress Whether to populate local/global stress arrays in Pa.
+     * @param[in] writeFullStrain Whether to populate local/global total-strain arrays.
+     * @return Owning field storage that must outlive DataOut evaluation.
+     */
+    CellOutputFields computeCellOutputFields(bool writeFullStress, bool writeFullStrain) const;
+
+    /** Attach damage and scalar stress/strain fields in the established order.
+     * @param[in,out] dataOut Destination that references @p fields.
+     * @param[in] fields Computed cell-centered arrays.
+     */
+    void addScalarMechanicalOutput(DataOut<dim> &dataOut,
+                                   const CellOutputFields &fields) const;
+
+    /** Attach the uniform macroscopic-strain component arrays.
+     * @param[in,out] dataOut Destination that references @p fields.
+     * @param[in] fields Storage containing the six tensor components.
+     */
+    void addMacroscopicStrainOutput(DataOut<dim> &dataOut,
+                                    const CellOutputFields &fields) const;
+
+    /** Attach optional local and global full-stress component arrays.
+     * @param[in,out] dataOut Destination that references @p fields.
+     * @param[in] fields Computed stress arrays in Pa.
+     */
+    void addFullStressOutput(DataOut<dim> &dataOut, const CellOutputFields &fields) const;
+
+    /** Attach optional local and global full-total-strain component arrays.
+     * @param[in,out] dataOut Destination that references @p fields.
+     * @param[in] fields Computed dimensionless strain arrays.
+     */
+    void addFullStrainOutput(DataOut<dim> &dataOut, const CellOutputFields &fields) const;
+
     /** Log stress/damage diagnostics and append convergence-table values for one iterate.
      * @param[in] refinementCycle Zero-based refinement-cycle index.
      * @param[in] tempStepNum One-based temperature-step index.

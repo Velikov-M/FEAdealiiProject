@@ -92,7 +92,7 @@ Refinement cycles are independent runs: each cycle restarts the complete tempera
 
 ## Geometry, grains, and orientations
 
-The archived mesh is a 10 by 10 by 10 base grid of cubic cells. Grain identity is assigned by cell centroid on a `GrainsPerSide^3` lattice, independently of subsequent mesh refinement. With the tracked `GrainsPerSide = 10`, there are 1,000 crystallites.
+The archived mesh is a 10 by 10 by 10 base grid of cubic cells. Grain identity is assigned by cell centroid on a `GrainsPerSide^3` lattice, independently of subsequent mesh refinement. With the tracked `GrainsPerSide = 10`, there are 1,000 crystallites. `LengthOfTheBody` defines the expected `[0,L]^3` geometry for boundary/grain assignment, but the mesh reader does not rescale nodal coordinates. To model another absolute domain size, supply an identical-topology mesh whose coordinates are scaled to that size; changing only the parameter does not change the mesh and will normally fail the boundary check.
 
 | `InitialGlobalRefinements` | Elements per grain | Total cells on the tracked geometry |
 |---:|---:|---:|

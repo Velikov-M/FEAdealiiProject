@@ -5,11 +5,46 @@
 #include <deal.II/base/symmetric_tensor.h>
 #include <deal.II/lac/vector.h>
 #include <deal.II/numerics/data_postprocessor.h>
+#include <array>
 #include <vector>
 
 namespace StepCooling
 {
   using namespace dealii;
+
+  /** Own cell-centered arrays referenced by DataOut during VTU construction.
+   *
+   * Scalar stresses are in Pa, strains and damage are dimensionless, and the damage-driving
+   * ratio is normalized by the configured stress threshold. The complete object must outlive
+   * DataOut::build_patches() and DataOut::write_vtu().
+   */
+  struct CellOutputFields
+  {
+    /** Allocate arrays for all scalar fields and requested full tensors.
+     * @param[in] cellCount Number of active cells.
+     * @param[in] writeFullStress Whether to allocate local/global stress component arrays.
+     * @param[in] writeFullStrain Whether to allocate local/global strain component arrays.
+     */
+    CellOutputFields(unsigned int cellCount, bool writeFullStress, bool writeFullStrain);
+
+    Vector<double> damage;             ///< Cell-average damage.
+    Vector<double> sigma33;            ///< Local c-axis normal stress.
+    Vector<double> eps33;              ///< Local total strain normal to the c-axis.
+    Vector<double> basalShear;         ///< Local basal-plane shear magnitude.
+    Vector<double> vonMises;           ///< Frame-invariant von Mises stress.
+    Vector<double> pressure;           ///< Frame-invariant pressure, positive in compression.
+    Vector<double> damageDrivingRatio; ///< Local sigma_33 divided by stress threshold.
+
+    std::array<Vector<double>, 6> macroscopicStrain; ///< Uniform arrays in tensor-component order.
+
+    std::array<Vector<double>, 5> localStress;  ///< Order 11, 22, 12, 13, 23.
+    std::array<Vector<double>, 6> globalStress; ///< Order xx, yy, zz, xy, xz, yz.
+    std::array<Vector<double>, 5> localStrain;  ///< Order 11, 22, 12, 13, 23.
+    std::array<Vector<double>, 6> globalStrain; ///< Order xx, yy, zz, xy, xz, yz.
+
+    bool writeFullStress; ///< Whether full stress arrays are populated and exported.
+    bool writeFullStrain; ///< Whether full strain arrays are populated and exported.
+  };
 
   /** Export each grain's c-axis as a vector for ParaView line glyphs.
    *

@@ -23,7 +23,7 @@ Resolved-grain `main.cpp` now contains only process initialization, parameter-fi
 - `src/periodic.cpp`: periodic condensation and homogenization;
 - `src/output.cpp` and `src/run.cpp`: field/CSV/PVD output and converged-state recording, separated from run/refinement/temperature-step orchestration.
 
-`ElasticProblem::run()` contains only `initializeRun()`, `initializeMicrostructure()`, `runRefinementCycles()`, and `finalizeRunOutput()`. Lower-level helpers retain the original operation order. The abstraction and module-boundary rules are defined in [development-policy.md](development-policy.md).
+`ElasticProblem::run()` contains only `initializeRun()`, `initializeMicrostructure()`, `runRefinementCycles()`, and `finalizeRunOutput()`. Lower-level helpers retain the original operation order. `output_results()` is similarly limited to output-block orchestration: `CellOutputFields` owns cell-centered arrays through VTU evaluation, one helper computes mechanical fields in a single quadrature pass, and separate blocks attach displacement/orientation, scalar mechanical fields, macroscopic strain, full stress, and full strain. The abstraction and module-boundary rules are defined in [development-policy.md](development-policy.md).
 
 HOPG remains a single-file fork. There is no shared library that synchronizes later changes between the two production implementations. Within resolved-grain, `libresolved_grain.a` links both the production executable and test drivers, so unit and production-MMS tests exercise the current numerical sources rather than copies.
 
@@ -133,7 +133,7 @@ python3 scripts/benchmark_solvers.py \
   --label '8,000-cell two-step solver/thread sweep'
 ```
 
-For the current-material active-damage history, add `--final-temperature 1800 --stress-threshold 60e6 --require-damage`. The default is periodic frozen-`Cbar` quasi-Newton with Aitken coupling; `--exact-cbar` and `--coupling-acceleration none` select explicit alternatives. Linear tolerance, materials, mesh, and seed otherwise come from `--base-input`. Benchmarks reduce optional tensor output but retain the final VTU/PVD and complete macroscopic history.
+For the current-material active-damage history, add `--final-temperature 1800 --stress-threshold 60e6 --require-damage`. The default is periodic frozen-`Cbar` quasi-Newton with Aitken coupling; `--exact-cbar` and `--coupling-acceleration none` select explicit alternatives. Linear tolerance, materials, mesh, and seed otherwise come from `--base-input`. Additional `--set Section.Entry=value` options are applied last and recorded in the manifest, allowing isolated studies such as alternate geometry files or full tensor output. Benchmarks reduce optional tensor output unless overridden this way, but retain the final VTU/PVD and complete macroscopic history.
 
 Every invocation creates a separate ignored `verification-runs/<run-id>/` with host/environment data, Git state and source hashes, exact per-case inputs and commands, logs, numerical outputs, and protected-file checks. `summary.json` and `cases.json` record process status, completion checks, full timer sections, cumulative solver work, outer iterations, CPU time, per-case peak RSS, and macroscopic-history hashes. The per-case resource report measures the executable child alone; the manifest's global RSS is only a high-water mark.
 
@@ -182,6 +182,8 @@ python3 analyze_mosaic.py --help
 ```
 
 The resolved-grain driver supports BC/resolution and seed sweeps. The HOPG driver varies mosaic spread, normally with a shared seed so the same sampled standard-normal pattern is scaled. Analysis scripts reconstruct summaries from archived logs/CSV files; they do not make an incomplete run scientifically complete.
+
+`LengthOfTheBody` does not rescale the mesh reader's coordinates. For absolute-size studies, supply an identical-topology mesh scaled to `[0,L]^3` and keep its exact path/hash with the run. The passed four-decade similarity study and its cell-field comparisons are indexed in [studies.md](studies.md#characteristic-length-similarity-2026-11-23).
 
 `hopgCooling/configure_input.py` **does rewrite** `hopgCooling/input.json`; it is a baseline generator, not a per-run driver. It selects the 2500 K-referenced CTE file and checks its reference and temperature validity. Review the Git diff after running it.
 

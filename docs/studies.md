@@ -10,6 +10,41 @@ The curated current-state documents describe present code. A study report can re
 
 This section records dated outcomes for specific source states. It is evidence, not the definition of the current test suite; see [verification.md](verification.md) for test setups, oracles, and acceptance criteria. Each `verification-runs/<run-id>/` directory is the primary record when it is available locally. These directories are Git-ignored, so the summaries below preserve the run index and key results without implying that old evidence covers later source changes.
 
+### Characteristic-length similarity: 2026-11-23
+
+The study tested whether absolute domain size affects stress in the length-independent small-strain model. The expected similarity is `x,u ~ L`, with strain, stress, orientations, and damage invariant. All runs used the same 1,000-cell topology and group assignment, seed 20260905, periodic boundaries, current materials, frozen-`Cbar` quasi-Newton, Aitken coupling, SSOR CG at two threads, and relative linear tolerance `1e-8`. The complete ten-step history from 2000 to 1800 K was run at each length with both the tracked 200 MPa threshold and the isolated 60 MPa active-damage threshold.
+
+`LengthOfTheBody` does not rescale the current mesh reader's coordinates. Instead of changing production code, the study generated identical-topology copies of the archived mesh with only nodal coordinates scaled. `verification-runs/length-study-assets-v1/manifest.json` records the source and scaled-mesh hashes and identical element sections. Exact run inputs reference these meshes.
+
+| `L` (m) | 200 MPa run | 60 MPa run |
+|---:|---|---|
+| 0.01 | `verification-runs/20261123T101056.467475Z-01949bb31a6b-38171/` | `verification-runs/20261123T101101.911066Z-01949bb31a6b-38244/` |
+| 0.1 | `verification-runs/20261123T101110.383853Z-01949bb31a6b-38348/` | `verification-runs/20261123T101115.637280Z-01949bb31a6b-38425/` |
+| 1 | `verification-runs/20261123T101124.252746Z-01949bb31a6b-38522/` | `verification-runs/20261123T101129.609972Z-01949bb31a6b-38591/` |
+| 10 | `verification-runs/20261123T101138.108503Z-01949bb31a6b-38690/` | `verification-runs/20261123T101143.460366Z-01949bb31a6b-38763/` |
+| 100 | `verification-runs/20261123T101152.032362Z-01949bb31a6b-38864/` | `verification-runs/20261123T101157.341873Z-01949bb31a6b-38947/` |
+
+All ten runs passed convergence and artifact checks with unchanged protected files. Relative to `L=1 m`, every physical macroscopic CSV column matched **exactly at written precision** for every length and both thresholds. All 36 invariant decoded VTU arrays also matched exactly: orientation, damage, scalar mechanical fields, macroscopic strain, and every full local/global stress and strain component. Coordinates and both displacement fields scaled by `L` with maximum relative error `8.1e-8`, attributable to Float32 VTU output. The acceptance tolerance was `2e-6`; the measured physical-field difference was zero.
+
+Outer iterations and total CG iterations were also identical across lengths: 20 passes/2,891 iterations for 200 MPa and 29/3,360 for 60 MPa. Small differences remained only in near-zero mean-stress residuals and asymmetry diagnostics, which are not the physical similarity targets. Detailed per-case and per-field metrics are in `verification-runs/length-study-assets-v1/comparison.json`.
+
+This supports the expected length independence for the tested four-decade range and model assumptions. It is not evidence for length-dependent fracture, gradient plasticity, surface physics, or sizes outside that range. The scaled-mesh experiment did not modify production code, the tracked input, material data, seed, or solver settings.
+
+### Output-block refactor: 2026-11-23
+
+At Git revision `01949bb31a6b` with the focused uncommitted output changes, `output_results()` was reduced to block orchestration and cell-field ownership/evaluation was separated from `DataOut` attachment. Field names, insertion order, values, and schemas were intentionally preserved.
+
+Verification used:
+
+```bash
+./scripts/verify.sh build-resolved ab-resolved \
+  --reference-run verification-runs/20261118T112247.213937Z-8536acf704b1-84891
+./scripts/verify.sh check
+cmake --build resolvedGrainCooling/build --target docs
+```
+
+The nine-case A/B build and all cases passed with zero scaled CSV difference and all 27 VTU files identical except timestamps (`verification-runs/20261123T100120.639694Z-01949bb31a6b-32411/`). The unified gate passed all 18 targets (`verification-runs/20261123T100249.425334Z-01949bb31a6b-33394/`), and Doxygen passed with warnings as errors. Protected inputs and archived results were unchanged.
+
 ### Solver profiling and benchmarks: 2026-11-20
 
 This study measures the instrumented resolved-grain solver at Git revision `964c60474f241056824e9aa5240f70b5fb4ce96b` with the current uncommitted source changes. The host was the **current Ryzen 5 4500U** (6 physical cores, 8 MiB L3, 7.2 GiB RAM), not the older Ryzen 5 7500F/15 GiB machine used in `scaling_options.md`. The build was Release with deal.II `9.9.0-pre` and Trilinos ML. Do not compare these absolute times directly with archived runs using other hosts, materials, damage states, or output settings.
@@ -248,6 +283,56 @@ The independent reference gives final damage `0.6904145198`. Archived finite-ele
 The least-squares observed order over all five step sizes is approximately 1.056, consistent with backward Euler. The largest archived spatial damage spread is below `1e-11`. The largest absolute algebraic stress mismatch is approximately `3.61e-3 Pa`, about `1.8e-11` times the 200 MPa threshold, using the test's tight linear-solver tolerance.
 
 These results support the archived damage update and stress–damage coupling in a self-limiting, displacement-controlled homogeneous test. They do not verify load-controlled response, general multiaxial damage, shear-driven mechanisms, heating/crack closure, nonuniform damage fields, or physical calibration. The reduced current target uses only the first three step sizes; see [verification.md](verification.md#other-targets-in-the-unified-gate).
+
+## Random-polycrystal versus HOPG cooling: 2026-11-23
+
+This study compared one damage-free thermoelastic step from 2500 to 300 K for the same 1,000 crystallites with uniform-sphere random orientations and the existing HOPG-like `mosaicGaussian` distribution. The HOPG spread was 0.5 degrees standard deviation per tilt component (not FWHM); the realized component deviations were 0.5044 and 0.5037 degrees. Both cases used seed 20260905, periodic boundaries, exact seven-solve periodic condensation, AMG with two smoother sweeps, four WorkStream threads, relative linear tolerance `1e-8`, and 1, 8, or 64 elements per grain (1,000, 8,000, or 64,000 cells). Resolved-grain damage was disabled exactly with `a_kineticParam=0`; HOPG used `DamageEnabled=false`. Every completed CSV row has mean and maximum damage exactly zero.
+
+Both forks used identical material expressions in each paired run. To avoid extrapolation below 1000 K, this run-specific study selected full-range fits rather than copying either tracked baseline unchanged: Marsden `einstein1c_full` for basal CTE and `einstein2_full` for c-axis CTE, both secant and referenced to 2500 K; Polewczyk `quadratic_full` for C13/C44 and the recommended full-range fits for C11/C12/C33. The selected c-axis fit has maximum relative instantaneous-fit error 0.601% over 300–2500 K. The basal fit has maximum absolute error 0.0244e-6/K, but large relative error near its CTE zero crossing. The full-range C13/C44 selections have maximum relative errors 17.6% and 24.0%, respectively, against the digitized MD data; their use avoids extrapolation but does not make the material inputs highly accurate.
+
+At 300 K, the independent secant quantities are:
+
+| Quantity | Basal (`a`) | c-axis (`c`) |
+|---|---:|---:|
+| Secant CTE (1/K) | 8.45110e-7 | 3.442394e-5 |
+| Free-crystal strain from 2500 to 300 K | -0.001859242 | -0.075732671 |
+
+The c-axis contraction is approximately 7.57%, outside a reassuring small-strain regime. The following GPa-scale residual stresses are therefore conditional results of the current small-strain, damage-free constitutive model and digitized fits, not validated predictions for real graphite cooled over this interval.
+
+The comparison used the same post-processing for both forks: each cell's stress tensor was averaged over its eight quadrature points, scalar measures were derived from that averaged tensor, and unweighted statistics were formed over cells. All cells have equal volume in each mesh. deal.II replicates each cell value at eight VTU vertices; this equal replication does not change the distribution. Percentiles below use the first sorted sample reaching the requested cumulative fraction. These are cell-averaged statistics, not the HOPG-only quadrature-point statistics. All stresses in the table are MPa.
+
+| Cells | Orientations | `sigma_33` RMS | `sigma_33` p01–p99 | Basal-shear RMS | von Mises RMS |
+|---:|---|---:|---:|---:|---:|
+| 1,000 | Random | 1971.9 | 1793.2 to 2106.9 | 1.138 | 3491.6 |
+| 1,000 | HOPG | 0.355 | -0.761 to 0.902 | 0.396 | 8.425 |
+| 8,000 | Random | 1838.5 | 1421.8 to 2119.7 | 2.514 | 4024.6 |
+| 8,000 | HOPG | 0.567 | -1.366 to 1.334 | 0.391 | 6.789 |
+| 64,000 | Random | 1726.3 | 1023.2 to 2155.4 | 4.642 | 4507.9 |
+| 64,000 | HOPG | 0.660 | -1.724 to 1.694 | 0.386 | 6.476 |
+
+At 64,000 cells, the random/HOPG RMS ratios are 2613.7 for local c-axis normal stress, 12.02 for basal shear, and 696.0 for von Mises stress. Random `sigma_33` has mean 1711.4 MPa and is almost entirely tensile at quadrature points; HOPG `sigma_33` has mean 0.010 MPa and a nearly symmetric tension/compression distribution. In contrast, the basal-shear contrast is modest because the selected C44 is only 0.223 GPa at 300 K. A simple scale estimate using C33 = 28.98 GPa and the approximately 0.068 unaccommodated random-polycrystal c-axis strain gives about 2 GPa, consistent with the computed normal-stress RMS.
+
+The 64,000-cell macroscopic normal strains were `(-0.006900, -0.007729, -0.007538)` for random orientations and `(-0.0018546, -0.0018545, -0.0757417)` for HOPG. HOPG therefore remains close to free-crystal contraction, with axial/transverse differences of approximately 0.012%/0.26% from the independent thermal strains. Random-orientation macroscopic strain changes substantially with mesh resolution and should not be approximated by the simple orientation average of eigenstrain, -0.0264837. Across all six runs, macroscopic mean-stress norms were at most 8.0e-5 Pa and Cbar asymmetry at most 1.38e-10. Near-zero macroscopic stress is a periodic free-cooling equilibrium condition, not evidence of low local residual stress.
+
+From 8,000 to 64,000 cells, random RMS `sigma_33`, basal shear, and von Mises stress changed by -6.10%, +84.65%, and +12.01%; the corresponding HOPG changes were +16.45%, -1.14%, and -4.61%. Thus the orientation contrast is unambiguous, but the random stress fields—especially shear and point extrema—are not demonstrated to be mesh converged. HOPG quadrature-point RMS values at 64,000 cells were 0.784 MPa for `sigma_33`, 0.386 MPa for basal shear, and 6.871 MPa for von Mises stress; these use a different sampling definition from the paired table.
+
+Runs used Release executables with deal.II 9.9.0 at Git HEAD `01949bb31a6b` plus the uncommitted output-refactor state recorded in each manifest. All six passed completion, final-temperature, zero-damage, artifact, and log-warning checks; protected inputs/material files were unchanged. Resources were:
+
+| Cells | Random wall (s) | Random peak RSS (MiB) | HOPG wall (s) | HOPG peak RSS (MiB) |
+|---:|---:|---:|---:|---:|
+| 1,000 | 2.88 | 225.8 | 3.52 | 231.8 |
+| 8,000 | 10.87 | 349.3 | 30.23 | 350.8 |
+| 64,000 | 118.50 | 1256.5 | 297.76 | 1316.2 |
+
+Evidence and reproduction artifacts:
+
+- small-level run: `verification-runs/20261123T141349Z-01949bb31a6b-orientation-cooling/`;
+- large-level run: `verification-runs/20261123T141624Z-01949bb31a6b-orientation-cooling/`;
+- consolidated data: `verification-runs/orientation-cooling-2500-300-comparison.json` and the corresponding CSV;
+- plot: `verification-runs/orientation-cooling-2500-300-comparison.png`;
+- drivers and exact per-case inputs/logs are preserved in the run directories and `verification-runs/orientation_cooling_driver.py` / `summarize_orientation_cooling.py`.
+
+An initial 64,000-cell attempt with a 2 GiB address-space cap failed during setup with `std::bad_alloc` before a solve (`verification-runs/20261123T141519Z-01949bb31a6b-orientation-cooling/`). Both cases passed when rerun sequentially with a 3 GiB cap. This was a resource-limit failure, not a numerical non-convergence result. No production source, tracked baseline input, material data, orientation seed, or solver tolerance was changed for this study.
 
 ## Latest HOPG mosaic-spread study
 
