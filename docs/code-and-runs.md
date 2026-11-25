@@ -14,11 +14,12 @@ Every executable folder has its own `CMakeLists.txt` and builds a target named `
 
 Resolved-grain `main.cpp` now contains only process initialization, parameter-file selection, problem construction, and exception handling. Its implementation is divided by responsibility:
 
-- `include/resolved_grain/`: parameter schema, material tensors, the standalone damage law, safe convergence measures, orientations, quadrature-point state, cell assembly, WorkStream scratch/copy data, output postprocessors, and the `ElasticProblem` interface;
+- `include/resolved_grain/`: parameter schema, material tensors, the standalone damage law, safe convergence measures, orientations, quadrature-point state and discontinuous mesh transfer, cell assembly, WorkStream scratch/copy data, output postprocessors, and the `ElasticProblem` interface;
 - `src/parameters.cpp` and `src/material.cpp`: parameter declarations and local constitutive tensors;
 - `src/cell_assembly.cpp`: the production and manufactured-solution cell kernel;
 - `src/damage_law.cpp`: the independently testable scalar backward-Euler damage update;
 - `src/setup.cpp`: mesh/group input, grain and boundary setup, caches, constraints, and refinement-cycle preparation;
+- `src/quadrature_transfer.cpp`: cell-wise trilinear DG transfer of current and old damage, including coarsening projection and physical bound checks;
 - `src/assembly.cpp`, `src/solvers.cpp`, and `src/damage.cpp`: cell assembly, linear solves, damage/coupling updates, and converged-damage commitment;
 - `src/periodic.cpp`: periodic condensation and homogenization;
 - `src/output.cpp` and `src/run.cpp`: field/CSV/PVD output and converged-state recording, separated from run/refinement/temperature-step orchestration.
@@ -62,7 +63,7 @@ HTML is generated under `build/doxygen/html/`; Graphviz diagrams are disabled so
 
 ### Production-linked unit and MMS tests
 
-With the default `BUILD_TESTING=ON`, the build creates `resolved_grain_tests` and `resolved_grain_mms`. GoogleTest cases cover constitutive response, rotations, damage roots, stability, and zero-safe convergence measures. `tests/symbolic/generate_oracles.py` generates the independent SymPy references, including analytic MMS displacement gradients and body forces with temperature-dependent stiffness and secant CTE. No generated header is tracked. The exact 14 test cases, manufactured fields, analytical production cases, numerical tolerances, and coverage limits are documented in [verification.md](verification.md#implemented-tests-setup-oracle-and-pass-criteria).
+With the default `BUILD_TESTING=ON`, the build creates `resolved_grain_tests` and `resolved_grain_mms`. GoogleTest cases cover constitutive response, rotations, damage roots, stability, and zero-safe convergence measures. `tests/symbolic/generate_oracles.py` generates the independent SymPy references, including analytic MMS displacement gradients and body forces with temperature-dependent stiffness and secant CTE. No generated header is tracked. The exact 17 test cases, manufactured fields, adaptive/global MMS comparison, analytical production cases, numerical tolerances, and coverage limits are documented in [verification.md](verification.md#implemented-tests-setup-oracle-and-pass-criteria).
 
 For a local development loop:
 
@@ -98,7 +99,7 @@ The complete approved bootstrap gate can also be selected in one invocation:
 
 `build` selects independent Release builds of `mmsSandbox`, `uniaxialDamageTest`, `resolvedGrainCooling`, and `hopgCooling`. The individual `build-mms`, `build-uniaxial`, `build-resolved`, and `build-hopg` targets are also available. Tests require an existing executable and report `SKIPPED` if its build was not selected or completed.
 
-`check` is the unified required gate: environment, all four builds, 14 production-linked GoogleTest cases, production-source temperature-dependent MMS, the reduced copied-source MMS/uniaxial suites, active resolved-grain damage, HOPG smoke, and seven analytical resolved-grain cases. It returns zero only if all required targets pass and protected files remain unchanged. Build errors, test failures, timeouts, and prerequisite skips make the result fail. `summary.json` contains target-level and numerical results; `junit.xml` contains individual GoogleTest cases and target-level integration results. With `--reference-run`, existing resolved-grain A/B targets are also compared; newly introduced analytical targets absent from that reference report A/B as unavailable without failing their independent oracle.
+`check` is the unified required gate: environment, all four builds, 17 production-linked GoogleTest cases, production-source temperature-dependent MMS with global and adaptive sequences, the reduced copied-source MMS/uniaxial suites, active resolved-grain damage, in-history active-damage adaptation, HOPG smoke, and seven analytical resolved-grain cases. It returns zero only if all required targets pass and protected files remain unchanged. Build errors, test failures, timeouts, and prerequisite skips make the result fail. `summary.json` contains target-level and numerical results; `junit.xml` contains individual GoogleTest cases and target-level integration results. With `--reference-run`, existing resolved-grain A/B targets are also compared; newly introduced analytical targets absent from that reference report A/B as unavailable without failing their independent oracle.
 
 The reduced targets have deliberately limited scope:
 
@@ -107,8 +108,11 @@ The reduced targets have deliberately limited scope:
 - `smoke-resolved`: 1,000 cells and two steps from 2000 to 1960 K;
 - `smoke-hopg`: 1,000 cells and two steps from 2500 to 2400 K;
 - `damage-resolved`: the complete ten-step, 1,000-cell resolved-grain history from 2000 to 1800 K, with current material fits and an explicitly selected 60 MPa damage threshold instead of the tracked 200 MPa value. Only the isolated input is changed; nonzero monotone damage is required.
-- `production-mms-resolved`: the current production cell kernel with spatially varying temperature, temperature-dependent elastic constants and secant CTE, full Dirichlet data, and SymPy-generated forcing on 64, 512, and 4096 cells. Both successive L2 and H1 rates are checked.
+- `production-mms-resolved`: the current production cell kernel with spatially varying temperature, temperature-dependent elastic constants and secant CTE, full Dirichlet data, and SymPy-generated forcing on 64, 512, and 4096 globally refined cells. Both successive L2 and H1 rates are checked. A separate four-solve adaptive sequence starts at 64 cells and refines 30% of cells per cycle with no coarsening; deterministic cell/DoF counts and strictly decreasing L2, H1, and Kelly-indicator sequences are checked.
+- `adaptive-resolved`: two steps from 2000 to 1960 K with an isolated 5 MPa damage threshold and in-history adaptation after the first step. The mesh must increase from 1,000 to 3,100 cells, the second solve must use that mesh, and damage must be nonzero, bounded, and monotone. Both current and old damage and the displacement are transferred.
 - `analytical-resolved`: uniform periodic, uniform clamped, uniform traction-free, two-phase periodic laminate, and exact zero-CTE response under all three boundary-condition families. The laminate reference is obtained independently with SymPy from compatibility, traction continuity, and zero average stress.
+
+For production in-history adaptation, set `RefinementStrategy=adaptive` and `AdaptiveRefinementInterval=N`. The mesh is adapted after every Nth converged temperature step except the final step; zero disables this feature. The tracked baseline uses `RefinementStrategy=uniform` and interval zero. Existing `NumberOfRefinementCycles` remains a mesh-convergence driver whose later cycles restart the full temperature history with zero damage rather than continuing an accumulated state.
 
 `ab-resolved` selects nine resolved-grain cases: short WorkStream and serial smoke tests, complete active-damage histories on both assembly paths, exact periodic condensation, zero-displacement and free-surface boundaries, uniform-orientation analytical response, and an 8,000-cell initial-refinement case. With `--reference-run`, every macroscopic CSV cell is compared (integer columns exactly), along with PVD sequences, convergence/macroscopic iteration logs, and VTU contents. Only the deal.II generation timestamp line is normalized in VTU comparisons; numerical field bytes remain strict. The uniform case independently checks `Ebar` and the Kelvin `Cbar` diagonal. Without a reference, only the intrinsic convergence/output and analytical checks run.
 

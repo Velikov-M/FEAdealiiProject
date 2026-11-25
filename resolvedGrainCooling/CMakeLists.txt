@@ -21,6 +21,7 @@ add_library(resolved_grain STATIC
   src/parameters.cpp
   src/material.cpp
   src/damage_law.cpp
+  src/quadrature_transfer.cpp
   src/cell_assembly.cpp
   src/setup.cpp
   src/assembly.cpp
@@ -70,6 +71,7 @@ if(BUILD_TESTING)
     tests/unit/test_material.cpp
     tests/unit/test_damage_law.cpp
     tests/unit/test_orientations.cpp
+    tests/unit/test_quadrature_transfer.cpp
     tests/unit/test_convergence.cpp
   )
   add_dependencies(resolved_grain_tests symbolic_oracles)

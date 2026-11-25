@@ -10,6 +10,39 @@ The curated current-state documents describe present code. A study report can re
 
 This section records dated outcomes for specific source states. It is evidence, not the definition of the current test suite; see [verification.md](verification.md) for test setups, oracles, and acceptance criteria. Each `verification-runs/<run-id>/` directory is the primary record when it is available locally. These directories are Git-ignored, so the summaries below preserve the run index and key results without implying that old evidence covers later source changes.
 
+### Adaptive refinement and quadrature-state transfer: 2026-11-24
+
+At Git HEAD `28cf1fbfc894` with the uncommitted adaptive-refinement changes, the resolved-grain program gained optional in-history adaptation using serial `SolutionTransfer`, cell-wise discontinuous trilinear Gauss-point fields for current/old damage, and displacement transfer. `AdaptiveRefinementInterval=0` preserves the tracked baseline. Existing refinement cycles still restart each full history with zero damage. The selected indicator is Kelly's displacement-gradient jump indicator, not a rigorous composite error estimator; its limitations and the recommended residual-based future work are defined in [model.md](model.md#mesh-adaptation-and-history-transfer).
+
+Three production-linked unit tests independently checked trilinear refinement with discontinuous material offsets, persistent cells, representable trilinear coarsening, and physical bounds/history ordering for non-representable coarsening. During development these tests caught and fixed a multi-vector `SolutionTransfer` input-lifetime error. The adaptive MMS driver also initially exposed missing hanging-node constraints; adding them was necessary before interpreting adaptive errors. Current acceptance criteria are listed in [verification.md](verification.md#implemented-tests-setup-oracle-and-pass-criteria).
+
+The production active-damage case used two 20 K steps from 2000 K and an isolated 5 MPa threshold. The first converged state had mean/max damage 0.144343/0.186881. Kelly adaptation refined 1,000 to 3,100 cells; the second solve used the adapted mesh and completed with mean/max damage 0.390646/0.486116. Damage remained bounded and monotone, two output fields were written, and no warning/non-convergence marker occurred. This is an integration test of transfer and continuation, not a validated damage prediction or an adaptivity-efficiency study.
+
+The production-source MMS retained its global 64/512/4096-cell sequence and added four adaptive solves with 30% fixed-number refinement and no coarsening. Results were:
+
+| Sequence | Cells | DoFs | L2 error | H1 error | Kelly indicator norm |
+|---|---:|---:|---:|---:|---:|
+| Global | 64 | 375 | 1.024236e-7 | 1.579951e-6 | 1.752796e-6 |
+| Global | 512 | 2187 | 2.686982e-8 | 7.888607e-7 | 9.918340e-7 |
+| Global | 4096 | 14739 | 6.805899e-9 | 3.935805e-7 | 5.119200e-7 |
+| Adaptive | 64 | 375 | 1.024236e-7 | 1.579951e-6 | 1.752796e-6 |
+| Adaptive | 197 | 1029 | 7.247669e-8 | 1.302705e-6 | 1.344178e-6 |
+| Adaptive | 610 | 2901 | 3.277821e-8 | 8.451063e-7 | 9.550263e-7 |
+| Adaptive | 1891 | 7434 | 1.246548e-8 | 5.064007e-7 | 6.047498e-7 |
+
+The global L2 rates were 1.9305/1.9811 and H1 rates 1.0020/1.0031. Adaptive L2, H1, and indicator norms all decreased strictly. The final adaptive mesh used 50.44% of the 4096-cell global DoFs with 1.2867 times its H1 error and 1.8316 times its L2 error. Relative to the 512-cell global mesh, it used 3.399 times the DoFs and reduced L2/H1 errors to 0.4639/0.6419 times the global values. Thus this smooth MMS demonstrates working adaptive convergence but no universal efficiency advantage. It does not test physical strain jumps at composite interfaces.
+
+Verification commands were:
+
+```bash
+./scripts/verify.sh build-resolved ab-resolved \
+  --reference-run verification-runs/20261118T112247.213937Z-8536acf704b1-84891
+./scripts/verify.sh check
+cmake --build resolvedGrainCooling/build --target docs
+```
+
+The A/B build and nine cases passed in 59.0 s with zero scaled CSV difference, all 27 VTU files identical except timestamps, and identical convergence histories (`verification-runs/20261124T102228.344711Z-28cf1fbfc894-81431/`). The expanded unified gate passed all 19 targets in 140.9 s with 416.7 MiB peak child RSS (`verification-runs/20261124T102351.693772Z-28cf1fbfc894-83374/`). This included 17 unit tests, adaptive/global MMS, and active-damage adaptation. Doxygen passed with warnings as errors. The Release builds used deal.II 9.9.0 and the runner's default two solver threads. Protected inputs and archived results were unchanged; the intentional addition of the default-zero `AdaptiveRefinementInterval` parameter preceded these protected-file checks.
+
 ### Characteristic-length similarity: 2026-11-23
 
 The study tested whether absolute domain size affects stress in the length-independent small-strain model. The expected similarity is `x,u ~ L`, with strain, stress, orientations, and damage invariant. All runs used the same 1,000-cell topology and group assignment, seed 20260905, periodic boundaries, current materials, frozen-`Cbar` quasi-Newton, Aitken coupling, SSOR CG at two threads, and relative linear tolerance `1e-8`. The complete ten-step history from 2000 to 1800 K was run at each length with both the tracked 200 MPa threshold and the isolated 60 MPa active-damage threshold.

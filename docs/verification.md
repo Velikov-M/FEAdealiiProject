@@ -6,7 +6,7 @@ This document defines what to verify, how each test works, its acceptance criter
 
 The repository has separate PDE and damage-kinetics verification programs plus an explicit resource-limited regression runner. Their coverage is complementary; there is no single test suite that validates every production configuration.
 
-- `./scripts/verify.sh check` is the unified required gate. It includes production-linked unit and MMS tests, seven analytical resolved-grain cases, reduced copied-source MMS/uniaxial suites, an active-damage resolved-grain history, and HOPG smoke coverage. The exact setups and pass criteria are listed in [Implemented tests](#implemented-tests-setup-oracle-and-pass-criteria).
+- `./scripts/verify.sh check` is the unified required gate. It includes production-linked unit and global/adaptive MMS tests, seven analytical resolved-grain cases, reduced copied-source MMS/uniaxial suites, active-damage resolved-grain histories with and without in-history mesh adaptation, and HOPG smoke coverage. The exact setups and pass criteria are listed in [Implemented tests](#implemented-tests-setup-oracle-and-pass-criteria).
 - `mmsSandbox/` verifies a separate zero-damage, temperature-independent thermoelastic implementation against a manufactured solution.
 - `uniaxialDamageTest/` verifies a separate homogeneous displacement-controlled damage implementation against an independent scalar ODE solution and an algebraic stress relation.
 - Additional resolved-grain checks, solver comparisons, and physical studies are indexed in [studies.md](studies.md).
@@ -14,7 +14,7 @@ The repository has separate PDE and damage-kinetics verification programs plus a
 
 Because the copied verification programs and production programs are separate source copies, a passing copied-source test does not automatically cover later changes in the resolved-grain modules or `hopgCooling/main.cpp`. Production-linked tests have their own explicitly stated limits below.
 
-The latest recorded full gate passed all 18 required targets on 2026-11-19. See the [dated summary and source revision](studies.md#unified-production-linked-verification-2026-11-19) and `verification-runs/20261119T140812.883855Z-964c60474f24-170195/`. This is historical evidence for that recorded source state, not a substitute for rerunning `check` after new changes.
+The latest recorded full gate passed all 19 required targets on 2026-11-24. See the [dated adaptive-refinement summary](studies.md#adaptive-refinement-and-quadrature-state-transfer-2026-11-24) and `verification-runs/20261124T102351.693772Z-28cf1fbfc894-83374/`. This is historical evidence for that recorded source state, not a substitute for rerunning `check` after new changes.
 
 ## Implemented tests: setup, oracle, and pass criteria
 
@@ -28,7 +28,7 @@ There are three deliberately different kinds of evidence:
 
 ### Production-linked GoogleTest unit tests
 
-`unit-resolved` runs `resolvedGrainCooling/build/resolved_grain_tests`. The executable links the same `resolved_grain` static library as production. The runner requires at least one test and rejects every failure or skipped test; the current suite contains exactly 14 cases.
+`unit-resolved` runs `resolvedGrainCooling/build/resolved_grain_tests`. The executable links the same `resolved_grain` static library as production. The runner requires at least one test and rejects every failure or skipped test; the current suite contains exactly 17 cases.
 
 The independent symbolic constants are generated at build time by `resolvedGrainCooling/tests/symbolic/generate_oracles.py`. SymPy uses rational input values and direct index notation rather than calling the C++ material or damage implementations. The generated header is placed under the build directory and is not a tracked source file.
 
@@ -50,6 +50,14 @@ The independent symbolic constants are generated at build time by `resolvedGrain
 
 - `Orientations.BasisIsOrthonormalIncludingCoordinateAxes` tests the three coordinate axes, the negative z-axis, and a generic unit c-axis. For each, it requires `R*R^T = I`, `det(R) = 1`, and equality of the third matrix row with the requested global c-axis. The coordinate-axis cases exercise the basis-construction degeneracies.
 - `Orientations.SamplingIsReproducibleAndReturnsUnitAxes` generates 32 orientations from each of two `mt19937_64` generators seeded with 12345. Corresponding matrices must be bit-for-bit equal, every sampled c-axis must have unit norm, and every frame must pass the orthonormality/determinant checks. This tests reproducibility and valid frames, not the statistical uniformity of a large sample.
+
+**Discontinuous quadrature-state transfer (3 cases):**
+
+- `QuadratureTransfer.RefinesTrilinearDamageWithoutMixingDiscontinuousMaterials` initializes current and old damage from independent trilinear polynomials with a material-dependent offset on an eight-cell mesh, then refines one cell. It requires 15 active cells and evaluates both transferred fields at every new Gauss point. Values must match the analytic parent-specific polynomial within `2e-14`, including unchanged persistent cells; this detects cross-material continuity and quadrature/DoF ordering errors.
+- `QuadratureTransfer.CoarseningRecoversRepresentableTrilinearHistory` coarsens eight children containing one globally representable trilinear history into their parent. Both fields must recover the independent analytic values within `2e-14`.
+- `QuadratureTransfer.CoarseningEnforcesDamageBoundsAndHistoryOrdering` coarsens non-representable alternating child damage values. It requires every projected value to satisfy `0 <= old_damage <= damage <= 0.999`. It deliberately does not prescribe a unique projection for non-representable data.
+
+These tests exercise the production-linked `DamageQuadratureTransfer` class on a serial triangulation. They cover refinement, persistence, coarsening, discontinuities, and both history fields, but not distributed-memory repartitioning, which the current production mesh does not use.
 
 **Convergence scaling (4 cases):**
 
@@ -84,9 +92,13 @@ For each norm, the observed rate between successive meshes is `log2(error_coarse
 - finite, strictly positive L2 and H1-seminorm errors at every level;
 - both successive L2 rates in `[1.8, 2.2]`;
 - both successive H1 rates in `[0.8, 1.2]`;
-- exactly the three expected cell counts and a successful solver process.
+- exactly the three expected global cell counts and a successful solver process.
 
-Measured errors and rates from the latest full run are recorded in the [dated run summary](studies.md#unified-production-linked-verification-2026-11-19). This test verifies the shared cell stiffness, thermal load, body-force load, temperature-dependent constitutive evaluation, and Dirichlet solve for the manufactured problem. It does not exercise damage, periodic constraints, homogenization, random orientations, or the production cooling driver with a spatially varying temperature.
+The same executable then runs four adaptive solves. The sequence starts from the 64-cell global level, computes Kelly gradient-jump indicators, refines 30% of cells by fixed-number selection after each of the first three solves, and performs no coarsening. Hanging-node and Dirichlet constraints are both applied on every mesh. The expected cell counts are exactly 64, 197, 610, and 1891, with 375, 1029, 2901, and 7434 DoFs. L2 error, H1-seminorm error, and the indicator norm must be finite, positive, and strictly decreasing. The initial adaptive L2/H1 values must match the 64-cell global solution within `1e-14`. JSON output retains the original `rows` array and adds `adaptive_rows` with errors and indicator norms. The verification summary also reports nearest-global-DoF error and DoF ratios.
+
+These adaptive assertions test deterministic mesh execution, constraints, and convergence. They do not require adaptivity to outperform global refinement on this smooth manufactured solution and do not establish estimator reliability for discontinuous composite fields.
+
+Measured global and adaptive errors from the latest full run are recorded in the [dated adaptive-refinement summary](studies.md#adaptive-refinement-and-quadrature-state-transfer-2026-11-24). This test verifies the shared cell stiffness, thermal load, body-force load, temperature-dependent constitutive evaluation, and Dirichlet solve for the manufactured problem. It does not exercise damage, periodic constraints, homogenization, random orientations, or the production cooling driver with a spatially varying temperature.
 
 ### Analytical tests through the production executable
 
@@ -111,6 +123,7 @@ The following checks were already separate verification programs or smoke baseli
 | `mms-small` | The separate, zero-damage, temperature-independent `mmsSandbox` on 1,000 and 8,000 cells, with all ten temperature steps per mesh | Complete 20 rows; finite L2/H1/L-infinity errors; H1 rate in `[0.8,1.2]`, the other rates in `[1.8,2.2]`; final errors within 1% of archived values; nonempty plots and FE log |
 | `uniaxial-small` | The separate homogeneous displacement-controlled damage program at pseudo-time steps 0.1, 0.05, and 0.025 | Independent SciPy `solve_ivp` ODE reference; final error no more than 1.01 times the archived error; fitted order in `[0.8,1.3]`; spatial spread at most `1e-9`; algebraic stress mismatch at most `1e-8 * StressThreshold`; complete logs and plots |
 | `damage-resolved` | The current resolved-grain production executable for all ten steps from 2000 to 1800 K, 1,000 cells, current material fits, and an isolated 60 MPa threshold | Nonzero final mean and maximum damage, monotone bounded damage, ten finite macroscopic rows, ten PVD fields, and no convergence/warning markers; with `--reference-run`, strict A/B comparison also applies |
+| `adaptive-resolved` | Two-step resolved-grain cooling from 2000 to 1960 K with isolated 5 MPa threshold, Kelly-guided in-history adaptation after step one, and displacement/current/old-damage transfer | Exactly one adaptation from 1,000 to 3,100 cells; second solve uses 3,100 cells; two finite rows and PVD fields; nonzero bounded monotone damage; no warnings or non-convergence markers |
 | `smoke-hopg` | The independent HOPG fork for two steps from 2500 to 2400 K on 1,000 cells | Complete finite macroscopic and stress-statistics CSVs, exactly zero damage, consistent nonempty PVD fields, and no convergence/warning markers; there is no independent analytical stress oracle for this smoke case |
 
 The detailed copied-source MMS and uniaxial formulations are given in the following sections. Their reduced target limits remain explicit: the 64,000-cell copied-source MMS level and 80/160-step uniaxial cases are recorded as deferred, not silently treated as passed.
@@ -208,5 +221,7 @@ The following should remain visible as limitations rather than implied coverage:
 - the copied-source `mmsSandbox` remains temperature-independent; the new production MMS covers the shared cell kernel and constitutive functions, not a spatially varying production cooling driver;
 - no general nonuniform-damage analytical solution;
 - periodic analytical coverage is limited to homogeneous and two-phase laminate configurations, not arbitrary microstructures;
+- adaptive MMS uses a smooth solution and does not verify Kelly indicator reliability at material interfaces; no anisotropic traction-jump/cell-residual or goal-oriented estimator is implemented;
+- quadrature transfer is tested for the current serial mesh, not distributed-memory repartitioning; non-representable coarsening has no unique physical oracle beyond bounds and history ordering;
 - no experimental validation of residual stress, damage evolution, or HOPG scaling laws;
 - no calibrated uncertainty bounds for digitized material inputs and damage parameters.

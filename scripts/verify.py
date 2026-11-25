@@ -39,11 +39,11 @@ RESOLVED_ANALYTICAL_TARGETS = [
 CHECK_TARGETS = [
     "env", "build-mms", "build-uniaxial", "build-resolved", "build-hopg",
     "unit-resolved", "production-mms-resolved", "mms-small", "uniaxial-small", *RESOLVED_ANALYTICAL_TARGETS,
-    "damage-resolved", "smoke-hopg",
+    "damage-resolved", "adaptive-resolved", "smoke-hopg",
 ]
 TARGET_ORDER = [
     "env", *BUILD_TARGETS, "unit-resolved", "production-mms-resolved", "mms-small", "uniaxial-small",
-    "smoke-resolved", "smoke-hopg", "damage-resolved",
+    "smoke-resolved", "smoke-hopg", "damage-resolved", "adaptive-resolved",
     *(name for name in RESOLVED_AB_TARGETS
       if name not in ("smoke-resolved", "damage-resolved")),
     *(name for name in RESOLVED_ANALYTICAL_TARGETS if name not in RESOLVED_AB_TARGETS),
@@ -58,6 +58,7 @@ DEFAULT_TIMEOUTS = {
     "smoke-resolved": 600,
     "smoke-hopg": 600,
     "damage-resolved": 600,
+    "adaptive-resolved": 600,
     **{name: 600 for name in RESOLVED_AB_TARGETS},
     **{name: 600 for name in RESOLVED_ANALYTICAL_TARGETS},
 }
@@ -291,6 +292,15 @@ class Runner:
                 self.production(target, "resolvedGrainCooling", 1800,
                                 output_prefix="damage", require_damage=True,
                                 preserve_baseline=True, damage_threshold_pa=60e6)
+            elif target == "adaptive-resolved":
+                self.production(target, "resolvedGrainCooling", 1960,
+                                output_prefix="adaptive", require_damage=True,
+                                preserve_baseline=True, damage_threshold_pa=5e6,
+                                overrides={
+                                    "MeshRefinementParameters.RefinementStrategy": "adaptive",
+                                    "MeshRefinementParameters.AdaptiveRefinementInterval": "1",
+                                    "MeshRefinementParameters.FractionToCoarsen": "0",
+                                }, require_adaptive_refinement=True)
             elif target == "serial-resolved":
                 self.production(target, "resolvedGrainCooling", 1960,
                                 overrides={"ParallelizationParameters.UseWorkStream": "false"})
@@ -547,7 +557,8 @@ class Runner:
             self.finish(target, record["status"], command=record)
             return
         try:
-            rows = json.loads(output.read_text())["rows"]
+            data = json.loads(output.read_text())
+            rows = data["rows"]
             cells = [row["cells"] for row in rows]
             if cells != [64, 512, 4096]:
                 raise ValueError(f"unexpected production MMS cells: {cells}")
@@ -560,9 +571,41 @@ class Runner:
                                for i in range(len(errors) - 1)]
                 if any(not bounds[0] <= value <= bounds[1] for value in rates[norm]):
                     raise ValueError(f"production MMS {norm} rates outside {bounds}: {rates[norm]}")
+            adaptive = data["adaptive_rows"]
+            adaptive_cells = [row["cells"] for row in adaptive]
+            adaptive_dofs = [row["dofs"] for row in adaptive]
+            if adaptive_cells != [64, 197, 610, 1891]:
+                raise ValueError(f"unexpected adaptive MMS cells: {adaptive_cells}")
+            if adaptive_dofs != [375, 1029, 2901, 7434]:
+                raise ValueError(f"unexpected adaptive MMS DoFs: {adaptive_dofs}")
+            adaptive_errors = {}
+            for norm in ("L2", "H1", "indicator"):
+                values = [float(row[norm]) for row in adaptive]
+                if any(not finite(value) or value <= 0 for value in values):
+                    raise ValueError(f"non-finite or non-positive adaptive MMS {norm}")
+                if any(new >= old for old, new in zip(values, values[1:])):
+                    raise ValueError(f"adaptive MMS {norm} is not strictly decreasing: {values}")
+                adaptive_errors[norm] = values
+            for norm in ("L2", "H1"):
+                if abs(adaptive_errors[norm][0] - float(rows[0][norm])) > 1e-14:
+                    raise ValueError("initial adaptive and global 64-cell solutions differ")
+            comparisons = []
+            for row in adaptive:
+                reference = min(rows, key=lambda candidate: abs(candidate["dofs"] - row["dofs"]))
+                comparisons.append({
+                    "adaptive_cells": row["cells"], "adaptive_dofs": row["dofs"],
+                    "nearest_global_cells": reference["cells"],
+                    "nearest_global_dofs": reference["dofs"],
+                    "dof_ratio": row["dofs"] / reference["dofs"],
+                    "L2_ratio": row["L2"] / reference["L2"],
+                    "H1_ratio": row["H1"] / reference["H1"],
+                })
             self.finish(target, "PASS", cells=cells,
                         errors={norm: [float(row[norm]) for row in rows] for norm in ("L2", "H1")},
                         observed_rates=rates,
+                        adaptive_cells=adaptive_cells, adaptive_dofs=adaptive_dofs,
+                        adaptive_errors=adaptive_errors,
+                        adaptive_nearest_global_comparisons=comparisons,
                         artifacts=str(workspace.relative_to(self.run_dir)))
         except Exception as error:
             self.finish(target, "FAIL", reason=str(error))
@@ -747,7 +790,8 @@ class Runner:
 
     def production(self, target, program, final_temperature, output_prefix="smoke",
                    require_damage=False, preserve_baseline=False, damage_threshold_pa=None,
-                   overrides=None, expected_cells=1000, analytical_response=None):
+                   overrides=None, expected_cells=1000, analytical_response=None,
+                   require_adaptive_refinement=False):
         executable = self.require_executable(target, program)
         if executable is None:
             return
@@ -800,7 +844,8 @@ class Runner:
         try:
             summary = self.check_production(
                 workspace, program, final_temperature, output_prefix,
-                expected_steps, require_damage, expected_cells, analytical_response)
+                expected_steps, require_damage, expected_cells, analytical_response,
+                require_adaptive_refinement)
             if self.args.reference_run:
                 reference_workspace = (self.args.reference_run.resolve() / target / "workspace")
                 if reference_workspace.is_dir() or target in RESOLVED_AB_TARGETS:
@@ -820,7 +865,7 @@ class Runner:
 
     def check_production(self, workspace, program, final_temperature, output_prefix,
                          expected_steps, require_damage, expected_cells=1000,
-                         analytical_response=None):
+                         analytical_response=None, require_adaptive_refinement=False):
         output = workspace / "output"
         log = workspace.parent / "run.log"
         text = log.read_text(errors="replace")
@@ -828,6 +873,16 @@ class Runner:
             raise ValueError("production log contains a non-convergence or warning marker")
         if f"Cells: {expected_cells}" not in text:
             raise ValueError(f"production log does not confirm {expected_cells} cells")
+        adapted_cells = None
+        if require_adaptive_refinement:
+            matches = re.findall(r"Adaptive refinement completed: (\d+) cells", text)
+            if len(matches) != 1:
+                raise ValueError(f"expected one in-history adaptation, found {len(matches)}")
+            adapted_cells = int(matches[0])
+            if adapted_cells <= expected_cells:
+                raise ValueError(f"adaptive refinement did not increase cells: {adapted_cells}")
+            if f"Cells: {adapted_cells}" not in text:
+                raise ValueError("post-adaptation solve does not confirm the adapted cell count")
         history_path = output / f"{output_prefix}_macroscopic_history.csv"
         history = self.read_commented_csv(history_path)
         if len(history) != expected_steps:
@@ -871,7 +926,7 @@ class Runner:
             else:
                 raise ValueError(f"unknown analytical response check: {analytical_response}")
         summary = {
-            "cells": expected_cells,
+            "cells": adapted_cells if adapted_cells is not None else expected_cells,
             "completed_temperature_steps": len(history),
             "initial_temperature_k": float(history[0]["T"]) + float(history[0]["cooling"]),
             "final_temperature_k": float(history[-1]["T"]),
@@ -884,6 +939,9 @@ class Runner:
         }
         if analytical_response:
             summary["analytical_response"] = analytical_response
+        if adapted_cells is not None:
+            summary["initial_cells"] = expected_cells
+            summary["adapted_cells"] = adapted_cells
         if program == "hopgCooling":
             statistics = self.read_commented_csv(output / f"{output_prefix}_stress_statistics.csv")
             if len(statistics) != expected_steps:

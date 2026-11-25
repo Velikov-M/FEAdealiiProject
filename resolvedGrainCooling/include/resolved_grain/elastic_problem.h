@@ -41,6 +41,7 @@
 #include <deal.II/fe/fe_q.h>
 
 #include <deal.II/numerics/vector_tools.h>
+#include <deal.II/numerics/solution_transfer.h>
 #include <deal.II/numerics/data_out.h>
 #include <deal.II/numerics/data_postprocessor.h>
 #include <deal.II/numerics/error_estimator.h>
@@ -68,6 +69,7 @@
 #include "resolved_grain/orientations.h"
 #include "resolved_grain/output.h"
 #include "resolved_grain/quadrature_data.h"
+#include "resolved_grain/quadrature_transfer.h"
 
 namespace StepCooling
 {
@@ -243,11 +245,17 @@ namespace StepCooling
     /** Copy converged damage to the old-damage baseline used by the next temperature step. */
     void commitConvergedDamage();
 
-    /** Estimate error, refine/coarsen, reassign grains, and reset mesh-dependent state.
+    /** Estimate displacement-gradient jumps and adapt the mesh.
+     *
+     * KellyErrorEstimator is used as an indicator, not a rigorous anisotropic-composite error
+     * bound. With transferState=true, displacement and both damage histories are transferred
+     * before solving continues. With transferState=false, the existing independent-cycle
+     * behavior reinitializes the solution and damage.
      * @param[in] fractionToRefine Fraction of cells selected for refinement.
      * @param[in] fractionToCoarse Fraction of cells selected for coarsening.
+     * @param[in] transferState Whether to preserve the current mechanical and damage state.
      */
-    void refine_grid(double fractionToRefine, double fractionToCoarse);
+    void refine_grid(double fractionToRefine, double fractionToCoarse, bool transferState);
 
     /** Write one VTU field snapshot and append it to the PVD time series.
      * @param[in] cycle Output number used in the filename.

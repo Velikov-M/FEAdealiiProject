@@ -328,6 +328,15 @@ namespace StepCooling
                         "'adaptive' since global refinement isn't solution-dependent and has a clean "
                         "theoretical convergence rate to compare against.");
 
+      prm.declare_entry("AdaptiveRefinementInterval",
+                        "0",
+                        Patterns::Integer(0),
+                        "Adapt after every Nth converged temperature step within each cooling "
+                        "history, except the final step. 0 disables in-history adaptation. This "
+                        "requires RefinementStrategy=adaptive and transfers displacement, current "
+                        "damage, and old damage to the adapted mesh. NumberOfRefinementCycles "
+                        "retains its independent restart-from-zero meaning.");
+
       prm.declare_entry("FractionToRefine",
                         "0.3",
                         Patterns::Double(0, 1),

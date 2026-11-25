@@ -102,9 +102,8 @@ namespace StepCooling
     TimerOutput::Scope timer_section(timer, "Setup of system");
     const QGauss<dim> quadrature_formula( fe.degree + 1);
     const unsigned int n_q_points    = quadrature_formula.size();
-    // Without this, repeated setup_system() calls (once per refinement cycle) would leave
-    // orphaned entries for cells that are no longer active (refined away or coarsened into
-    // their parent) sitting in damageInQuadraturePoints alongside the fresh ones.
+    // Repeated mesh setup must not leave orphaned entries for cells removed by refinement or
+    // coarsening. During in-history adaptation, transferred values are unpacked after this reset.
     damageInQuadraturePoints.clear();
     damageInQuadraturePoints.initialize(triangulation.begin_active(),
                                           triangulation.end(),
@@ -138,6 +137,9 @@ namespace StepCooling
 
     // L's six columns live on the same DoF numbering as the solution vector.
     macroCouplingColumns.assign(nMacroDofs, Vector<double>(dof_handler.n_dofs()));
+    macroUnitSolutions.clear();
+    cbarNeedsRefresh = true;
+    lastMacroIterations = 0;
     macroscopicStrain = 0;
   }
 
@@ -417,27 +419,44 @@ namespace StepCooling
     constraints.close();
   }
   template <int dim>
-  void ElasticProblem<dim>::refine_grid(double fractionToRefine, double fractionToCoarse)
+  void ElasticProblem<dim>::refine_grid(double fractionToRefine, double fractionToCoarse,
+                                        const bool transferState)
   {
+    TimerOutput::Scope timer_section(timer, "Refine and transfer");
     Vector<float> estimated_error_per_cell(triangulation.n_active_cells());
 
-    // KellyErrorEstimator estimates jumps in the solution gradient across cell *faces*,
-    // hence a (dim-1)-dimensional face quadrature rule, not a dim-dimensional cell one.
+    // This is a gradient-jump indicator, not a rigorous error estimate for anisotropic
+    // composites: physical strain jumps at grain boundaries can be flagged even at convergence.
     KellyErrorEstimator<dim>::estimate(dof_handler,
                                        QGauss<dim - 1>(fe.degree + 1),
                                        {},
-                                        solDisplacement,
+                                       solDisplacement,
                                        estimated_error_per_cell);
-
     GridRefinement::refine_and_coarsen_fixed_number(triangulation,
                                                     estimated_error_per_cell,
                                                     fractionToRefine,
                                                     fractionToCoarse);
+    triangulation.prepare_coarsening_and_refinement();
 
-    // setup_system() resets damage after refinement; refinement cycles restart from zero damage.
-    triangulation.execute_coarsening_and_refinement();
-    assignGrains();   // pure function of position, so the grain field is unchanged by refining
-    setup_system();
+    if (transferState)
+      {
+        DamageQuadratureTransfer<dim> damageTransfer(triangulation, damageInQuadraturePoints);
+        SolutionTransfer<dim, Vector<double>> displacementTransfer(dof_handler);
+        displacementTransfer.prepare_for_coarsening_and_refinement(solDisplacement);
+
+        triangulation.execute_coarsening_and_refinement();
+        assignGrains();
+        setup_system();
+        damageTransfer.interpolate(damageInQuadraturePoints);
+        displacementTransfer.interpolate(solDisplacement);
+        constraints.distribute(solDisplacement);
+      }
+    else
+      {
+        triangulation.execute_coarsening_and_refinement();
+        assignGrains();
+        setup_system();
+      }
   }
 
   template <int dim>
@@ -463,7 +482,7 @@ namespace StepCooling
         prm.get_double({"MeshRefinementParameters"}, "FractionToRefine");
       const double fractionToCoarsen =
         prm.get_double({"MeshRefinementParameters"}, "FractionToCoarsen");
-      refine_grid(fractionToRefine, fractionToCoarsen);
+      refine_grid(fractionToRefine, fractionToCoarsen, false);
     }
   }
 

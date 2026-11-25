@@ -11,6 +11,7 @@
 #include <deal.II/fe/fe_system.h>
 #include <deal.II/fe/fe_values.h>
 #include <deal.II/grid/grid_generator.h>
+#include <deal.II/grid/grid_refinement.h>
 #include <deal.II/grid/tria.h>
 #include <deal.II/lac/affine_constraints.h>
 #include <deal.II/lac/dynamic_sparsity_pattern.h>
@@ -18,6 +19,7 @@
 #include <deal.II/lac/sparse_matrix.h>
 #include <deal.II/lac/sparsity_pattern.h>
 #include <deal.II/lac/vector.h>
+#include <deal.II/numerics/error_estimator.h>
 #include <deal.II/numerics/vector_tools.h>
 
 #include <algorithm>
@@ -118,23 +120,23 @@ namespace
     unsigned int dofs;
     double l2;
     double h1;
+    double indicator;
   };
 
-  ErrorRow runLevel(const unsigned int refinements,
-                    const ParsedVectorFunction &exact,
-                    const ParsedVectorFunction &bodyForce,
-                    const FunctionParser<3> &temperature,
-                    const Material &material)
+  ErrorRow solveOnMesh(Triangulation<3> &triangulation,
+                       const ParsedVectorFunction &exact,
+                       const ParsedVectorFunction &bodyForce,
+                       const FunctionParser<3> &temperature,
+                       const Material &material,
+                       const bool adaptAfterSolve)
   {
-    Triangulation<3> triangulation;
-    GridGenerator::hyper_cube(triangulation);
-    triangulation.refine_global(refinements);
     FESystem<3> fe(FE_Q<3>(1), 3);
     DoFHandler<3> dofs(triangulation);
     dofs.distribute_dofs(fe);
     const FEValuesExtractors::Vector displacement(0);
 
     AffineConstraints<double> constraints;
+    DoFTools::make_hanging_node_constraints(dofs, constraints);
     VectorTools::interpolate_boundary_values(dofs, 0, exact, constraints);
     constraints.close();
     DynamicSparsityPattern dsp(dofs.n_dofs());
@@ -196,7 +198,57 @@ namespace
                                       VectorTools::H1_seminorm);
     const double h1 = VectorTools::compute_global_error(triangulation, difference,
                                                         VectorTools::H1_seminorm);
-    return {triangulation.n_active_cells(), dofs.n_dofs(), l2, h1};
+
+    Vector<float> indicator(triangulation.n_active_cells());
+    KellyErrorEstimator<3>::estimate(dofs, QGauss<2>(2), {}, solution, indicator);
+    const double indicatorNorm = indicator.l2_norm();
+    const unsigned int solvedCells = triangulation.n_active_cells();
+    if (adaptAfterSolve)
+      {
+        GridRefinement::refine_and_coarsen_fixed_number(triangulation, indicator, 0.3, 0.0);
+        triangulation.prepare_coarsening_and_refinement();
+        triangulation.execute_coarsening_and_refinement();
+      }
+    return {solvedCells, dofs.n_dofs(), l2, h1, indicatorNorm};
+  }
+
+  ErrorRow runLevel(const unsigned int refinements,
+                    const ParsedVectorFunction &exact,
+                    const ParsedVectorFunction &bodyForce,
+                    const FunctionParser<3> &temperature,
+                    const Material &material)
+  {
+    Triangulation<3> triangulation;
+    GridGenerator::hyper_cube(triangulation);
+    triangulation.refine_global(refinements);
+    return solveOnMesh(triangulation, exact, bodyForce, temperature, material, false);
+  }
+
+  std::vector<ErrorRow> runAdaptive(const ParsedVectorFunction &exact,
+                                    const ParsedVectorFunction &bodyForce,
+                                    const FunctionParser<3> &temperature,
+                                    const Material &material)
+  {
+    Triangulation<3> triangulation;
+    GridGenerator::hyper_cube(triangulation);
+    triangulation.refine_global(2);
+    std::vector<ErrorRow> rows;
+    for (unsigned int cycle = 0; cycle < 4; ++cycle)
+      rows.push_back(solveOnMesh(triangulation, exact, bodyForce, temperature, material,
+                                 cycle + 1 < 4));
+    return rows;
+  }
+
+  void writeRows(std::ostream &output, const std::vector<ErrorRow> &rows)
+  {
+    for (unsigned int i = 0; i < rows.size(); ++i)
+      {
+        if (i != 0)
+          output << ',';
+        output << "{\"cells\":" << rows[i].cells << ",\"dofs\":" << rows[i].dofs
+               << ",\"L2\":" << rows[i].l2 << ",\"H1\":" << rows[i].h1
+               << ",\"indicator\":" << rows[i].indicator << '}';
+      }
   }
 }
 
@@ -232,20 +284,22 @@ int main(int argc, char **argv)
         {
           rows.push_back(runLevel(refinements, exact, body, temperature, material));
           const auto &row = rows.back();
-          std::cout << "cells=" << row.cells << " dofs=" << row.dofs
-                    << " L2=" << row.l2 << " H1=" << row.h1 << std::endl;
+          std::cout << "global: cells=" << row.cells << " dofs=" << row.dofs
+                    << " L2=" << row.l2 << " H1=" << row.h1
+                    << " indicator=" << row.indicator << std::endl;
         }
+      const std::vector<ErrorRow> adaptiveRows = runAdaptive(exact, body, temperature, material);
+      for (const auto &row : adaptiveRows)
+        std::cout << "adaptive: cells=" << row.cells << " dofs=" << row.dofs
+                  << " L2=" << row.l2 << " H1=" << row.h1
+                  << " indicator=" << row.indicator << std::endl;
 
       std::ofstream output(argv[1]);
       output.precision(17);
       output << "{\"rows\":[";
-      for (unsigned int i = 0; i < rows.size(); ++i)
-        {
-          if (i != 0)
-            output << ',';
-          output << "{\"cells\":" << rows[i].cells << ",\"dofs\":" << rows[i].dofs
-                 << ",\"L2\":" << rows[i].l2 << ",\"H1\":" << rows[i].h1 << '}';
-        }
+      writeRows(output, rows);
+      output << "],\"adaptive_rows\":[";
+      writeRows(output, adaptiveRows);
       output << "]}\n";
     }
   catch (const std::exception &error)

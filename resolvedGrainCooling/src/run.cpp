@@ -90,6 +90,12 @@ namespace StepCooling
     const double Tend = prm.get_double({"ModelParameters"}, "FinalTemperature");
     const double dT = prm.get_double({"ModelParameters"}, "TemperatureIncrement");
     const unsigned int outputFrequency = prm.get_integer({"OutputParameters"}, "OutputFrequency");
+    const unsigned int adaptiveInterval =
+      prm.get_integer({"MeshRefinementParameters"}, "AdaptiveRefinementInterval");
+    if (adaptiveInterval > 0 &&
+        prm.get({"MeshRefinementParameters"}, "RefinementStrategy") != "adaptive")
+      throw std::runtime_error(
+        "AdaptiveRefinementInterval > 0 requires RefinementStrategy=adaptive");
 
     // Derive temperatures from the integer step index and shorten the last increment if needed
     // so every run lands exactly on Tend without accumulating subtraction error.
@@ -122,6 +128,18 @@ namespace StepCooling
       if (temperatureStepNumber % outputFrequency == 0 ||
           temperatureStepNumber == nTemperatureSteps)
         output_results(refinementCycle * 1000 + temperatureStepNumber);
+
+      if (adaptiveInterval > 0 && temperatureStepNumber % adaptiveInterval == 0 &&
+          temperatureStepNumber < nTemperatureSteps)
+        {
+          std::cout << "Adaptive refinement after temperature step " << temperatureStepNumber
+                    << ": " << triangulation.n_active_cells() << " cells before adaptation."
+                    << std::endl;
+          refine_grid(prm.get_double({"MeshRefinementParameters"}, "FractionToRefine"),
+                      prm.get_double({"MeshRefinementParameters"}, "FractionToCoarsen"), true);
+          std::cout << "Adaptive refinement completed: " << triangulation.n_active_cells()
+                    << " cells." << std::endl;
+        }
     }
   }
 

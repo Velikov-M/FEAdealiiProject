@@ -27,7 +27,8 @@ Resolved-grain module responsibilities are:
 | `parameters.*` | Parameter schema, defaults, validation patterns, help text |
 | `material.*` | Local constitutive tensors and physical constitutive checks |
 | `orientations.h` | Orientation construction and sampling |
-| `quadrature_data.h` | Quadrature-point state and transfer representation |
+| `quadrature_data.h` | Quadrature-point state and pack/unpack representation |
+| `quadrature_transfer.*` | Discontinuous Gauss-point damage transfer through mesh adaptation |
 | `assembly_data.h` | WorkStream scratch/copy ownership and reusable storage |
 | `cell_assembly.*` | Shared production/MMS cell integration at fixed constitutive data |
 | `damage_law.*` | Standalone scalar backward-Euler damage residual and root update |

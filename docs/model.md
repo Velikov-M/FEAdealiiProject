@@ -88,7 +88,7 @@ The displacement and damage problems are solved in a staggered fixed-point itera
 
 The resolved-grain tracked baseline enables damage. HOPG adds `DamageParameters/DamageEnabled`; its tracked baseline sets it to `false`, making damage identically zero and requiring one mechanical pass per temperature step.
 
-Refinement cycles are independent runs: each cycle restarts the complete temperature history and resets damage. There is no mid-simulation damage transfer. `InitialGlobalRefinements` is applied before a run; this is distinct from `NumberOfRefinementCycles`.
+Refinement cycles are independent runs: each cycle restarts the complete temperature history and resets damage. Optional in-history adaptation is separate and transfers damage as described below. `InitialGlobalRefinements` is applied before a run; this is distinct from both `NumberOfRefinementCycles` and `AdaptiveRefinementInterval`.
 
 ## Geometry, grains, and orientations
 
@@ -126,6 +126,18 @@ with unknown macroscopic strain \(\bar{\mathsf E}\) chosen to enforce zero volum
 At frozen damage and temperature, the exact static-condensation path uses one thermal/right-hand-side solve and six unit-macroscopic-strain solves against the same matrix. It constructs \(\bar{\mathsf C}\) from quadrature averages of the six stress responses and obtains the macroscopic strain from the zero-average-stress condition. Effective CTE follows from the resulting macroscopic strain history.
 
 `FrozenCbarQuasiNewton` instead reuses a frozen \(\bar{\mathsf C}\) only for the macroscopic update direction. Each pass still uses the current mechanical matrix and exact quadrature residual. If convergence stalls, \(\bar{\mathsf C}\) is rebuilt and the step retried. A reported frozen \(\bar{\mathsf C}\) is not necessarily the converged instantaneous homogenized stiffness; rebuild it before quoting that quantity as a result.
+
+## Mesh adaptation and history transfer
+
+The resolved-grain program supports optional adaptation after converged temperature steps. `AdaptiveRefinementInterval=0` disables this behavior. A positive interval N adapts after every Nth converged step except the final one and transfers the displacement, current damage, and old damage before continuing the same cooling history. Independently, `NumberOfRefinementCycles` continues to run each mesh level from the initial temperature with zero damage; it is not an accumulated-damage continuation.
+
+Current and old damage are packed separately into `FE_DGQArbitraryNodes` fields whose support points coincide with the existing two-point Gauss quadrature in each direction. Serial `SolutionTransfer` therefore provides trilinear interpolation inside each parent cell without imposing continuity between cells or materials. Persistent cells retain their data. Coarsening uses deal.II's finite-element restriction and L2 projection, not a simple cell average. Transferred damage is clamped to [0, 0.999], and old damage is limited by current damage to preserve their ordering. Projection of a non-representable discontinuous field during coarsening is still a modeling/numerical approximation and is not guaranteed to preserve local maxima or integrated damage.
+
+deal.II's `ContinuousQuadratureDataTransfer` is not used: it targets distributed triangulations, does not support coarsening, and warns against discontinuous constitutive state. `CellDataTransfer` remains suitable for cellwise constant data but does not provide the required within-cell interpolation.
+
+The current adaptive implementation uses `KellyErrorEstimator` on displacement as a **gradient-jump indicator**, followed by fixed-number refinement/coarsening. Displacement is continuous but its gradient and stress can be physically discontinuous at ideal material interfaces. Consequently, Kelly can flag an interface even when its discrete representation is accurate; its scalar coefficient option does not represent the anisotropic elastic tensor. Boundary residual terms are not supplied for the cooling problem. These values guide refinement but are not rigorous error bounds.
+
+For quantitative composite adaptivity, the appropriate next step is a residual-based indicator containing anisotropy/compliance-weighted traction jumps and cell equilibrium residuals, with consistent treatment of material interfaces, hanging faces, periodic faces, and Neumann boundaries. Goal-oriented indicators may be preferable if a specific homogenized quantity is the target. The smooth adaptive MMS comparison tests mesh mechanics and convergence, not the reliability of Kelly indicators at material interfaces.
 
 ## HOPG stress statistics
 
